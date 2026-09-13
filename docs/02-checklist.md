@@ -102,7 +102,7 @@
 - [x] 테스트 워크로드 Pod Running 확인
 - [x] `GET /healthz` 200 응답 확인
 - [x] `reset.sh` 실행 후 정상 상태 복원 확인
-- [ ] H5 조사 착수 (§6.1 연결 방식 A/B/C 검토)
+- [x] H5 조사 완료 (§6.1) — EventBridge 네이티브 연동(`Investigation Completed`)으로 해결. 실측은 Phase 5
 
 ---
 
@@ -221,10 +221,12 @@
 - [ ] read-only kubeconfig 주입
 - [ ] Slack DM에서 수동 질의로 권한 검증
 
-### 5-2. H5 연결 방식 확정 (§6.1)
+### 5-2. H5 연결 방식 실측 (§6.1 — D안 EventBridge 확정)
 
-- [ ] A안 검증: DevOps Agent → Generic Webhook → Crew
-- [ ] 불가 시 B안: Slack 채널 observe 모드 + 파싱 폴백 구현
+- [ ] D안 실측: 도쿄 Agent `Investigation Completed` 이벤트 → EventBridge 규칙 매칭
+  - 이벤트 패턴: `source: aws.aidevops`, `detail-type: Investigation Completed`, agent_space_id 필터
+- [ ] EventBridge 규칙 → SNS/Lambda → 서울 Crew 트리거 왕복 확인
+- [ ] 불가 시 폴백 B안: Slack 채널 observe 모드 + 파싱
 
 ### 5-3. Tier 2 승인 플로우 구현
 

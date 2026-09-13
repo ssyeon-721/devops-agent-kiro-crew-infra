@@ -51,13 +51,15 @@ v1.0은 실운영 워크로드 도입을 전제로 작성했다. v2.0은 아키�
   │  Runbook 자동 조사           │  ← 서울 S3/CW를
   │  GitHub 배포·코드 상관분석   │    크로스 리전 조사
   └────┬────────────────┬────────┘
-       ▼ Slack          ▼ 조사완료 이벤트
+       ▼ Slack          ▼ Investigation Completed
+       │                  (EventBridge, source: aws.aidevops)
 ═══════════ 서울 ap-northeast-2 ═══════════
   ┌──────────┐   ┌────────────────────────┐
   │#eks-poc  │◄──┤ Kiro Crew (EC2 상주)   │
   └──────────┘   │ 승인 버튼 / 조치 실행  │
                  │ 포스트모템 초안        │
                  └────────────────────────┘
+                 ▲ EventBridge 규칙 → SNS/Lambda → Crew
 
 [보조 경로 검증용] (서울)
 CloudWatch 알람 → SNS → Lambda → Crew 직접 트리아지
@@ -299,15 +301,51 @@ notes: |
 
 ### 6.1 H5 — DevOps Agent → Crew 연결
 
-공식 문서로 보장되지 않는 유일한 연결이다. **Phase 1 착수와 동시에 조사를 시작한다.**
+**조사 결과 (2026-09-13, GA 기준): EventBridge 네이티브 연동으로 해결됨.**
 
-| 안 | 방식 | 장점 | 단점 |
-|----|------|------|------|
-| A | Agent Space에 Generic Webhook 추가 발급 → Crew 수신 | 구조화된 페이로드, 안정적 | 조사 완료 이벤트를 Webhook으로 내보내는지 확인 필요 |
-| B | Crew를 Slack 채널에 observe 모드로 붙여 결과 메시지 파싱 | 확실히 동작 | 텍스트 파싱이라 포맷 변경에 취약 |
-| C | S3 이벤트 알림 폴링 | 단순 | 조사 결과가 S3에 안 떨어지면 불가 |
+당초 이 연결은 "공식 문서로 보장되지 않는 유일한 구간"으로 최대 리스크였으나, GA 이후 DevOps Agent가 **조사·완화 생애주기 이벤트를 Amazon EventBridge로 자동 전송**하는 것이 공식 지원됨을 확인했다. 이로써 H5는 미검증 구간에서 **공식 지원 구간**으로 격하된다.
 
-A안 우선, 불가 시 B안. B안 채택 시 파싱 실패하면 원문을 그대로 스레드에 올려 사람이 판단하게 하는 폴백 필수.
+**채택: D안 — EventBridge 조사 완료 이벤트**
+
+DevOps Agent는 `aws.aidevops` 소스로 default 이벤트 버스에 이벤트를 보낸다. 우리가 쓸 핵심 이벤트:
+
+| detail-type | 의미 | 용도 |
+|-------------|------|------|
+| `Investigation Completed` | 조사가 findings와 함께 성공 완료 | Crew 트리거 (핵심) |
+| `Investigation Failed` | 조사 실패 | 사람에게 알림 폴백 |
+| `Mitigation Completed` | 완화 조치 완료 | 조치 결과 회신 |
+
+연결 흐름 (크로스 리전 포함):
+```
+[도쿄] DevOps Agent 조사 완료
+   → default 이벤트 버스에 "Investigation Completed" 발생 (source: aws.aidevops)
+   → EventBridge 규칙이 매칭
+   → 타겟(SNS/Lambda 등)으로 라우팅
+   → [서울] Kiro Crew 트리거
+```
+
+특정 Agent Space만 필터링하는 이벤트 패턴도 지원한다:
+```json
+{
+  "source": ["aws.aidevops"],
+  "detail-type": ["Investigation Completed", "Investigation Failed"],
+  "detail": { "metadata": { "agent_space_id": ["<our-agent-space-id>"] } }
+}
+```
+
+**의의**
+- 원래 A안(Webhook 재발급)의 "조사 완료를 내보내는지 불확실" 문제, B안(Slack 파싱)의 "포맷 변경 취약" 문제를 모두 우회한다.
+- Phase 6 보조 경로(EventBridge→SNS→Lambda→Crew)와 **동일한 구조**라 아키텍처 일관성이 높다.
+- DevOps Agent가 추가 권한 없이 default 버스로 자동 전송하므로 설정 부담도 낮다.
+
+**대안 (D안 불가 시 폴백)**
+
+| 안 | 방식 | 단점 |
+|----|------|------|
+| B | Crew를 Slack 채널 observe 모드로 붙여 결과 파싱 | 텍스트 파싱이라 포맷 변경에 취약. 폴백 시 원문을 스레드에 올려 사람이 판단 |
+| C | S3 이벤트 알림 폴링 | 조사 결과가 S3에 안 떨어지면 불가 |
+
+D안이 크로스 리전 EventBridge로 실제 동작하는지는 Phase 5에서 실측한다(이벤트 발생 → 규칙 매칭 → Crew 수신까지 왕복). 다만 각 구간이 공식 지원되므로 성공 가능성이 높다.
 
 ### 6.2 제약 사항
 
@@ -514,7 +552,7 @@ apply에 승인 게이트를 두는 이유: 검증 도중 클러스터가 갈아
 2. **H3(증상 동일·원인 상이 구분)가 중심 가설이다.** 여기서 실패하면 나머지가 다 되어도 프로덕션에 쓸 수 없다.
 3. **중단 기준을 먼저 정해둔다.** Phase 3에서 적중률 4/7 미만이면 멈춘다. 이미 투자했으니 계속한다는 판단을 피하기 위해 착수 전에 명문화한다.
 
-Phase 1 착수와 동시에 §6.1의 H5 연결 방식을 조사한다. 이게 불가능하면 Phase 5 설계가 통째로 바뀐다.
+H5 연결 방식은 Phase 1에서 조사 완료했다(§6.1). GA 이후 도입된 EventBridge 네이티브 연동(`Investigation Completed` 이벤트)으로 해결되어, 당초 최대 리스크였던 이 구간이 공식 지원 구간으로 격하됐다. 실제 크로스 리전 왕복 동작은 Phase 5에서 실측한다.
 
 ---
 
@@ -524,6 +562,8 @@ Phase 1 착수와 동시에 §6.1의 H5 연결 방식을 조사한다. 이게 �
 - [DevOps Agent Operator 소스 코드](https://github.com/aws-samples/devops-agent-operator)
 - [AWS DevOps Agent 공식 페이지](https://aws.amazon.com/devops-agent/)
 - [DevOps Agent Runbook 가이드](https://docs.aws.amazon.com/devops-agent/latest/userguide/runbooks.html)
+- [AWS DevOps Agent + Amazon EventBridge 통합 (H5 해결 근거)](https://docs.aws.amazon.com/devopsagent/latest/userguide/configuring-integrations-and-knowledge-integrating-devops-agent-into-event-driven-applications-using-amazon-eventbridge-index.html)
+- [AWS DevOps Agent 지원 리전](https://docs.aws.amazon.com/devopsagent/latest/userguide/about-aws-devops-agent-supported-regions.html)
 - [Best Practices for Deploying AWS DevOps Agent in Production](https://docs.aws.amazon.com/devops-agent/latest/userguide/best-practices.html)
 - [Kiro Crew — Running 24/7](https://kiro.dev/docs/crew/running-24-7)
 - [Kiro Crew — Slack 인터페이스](https://kiro.dev/docs/crew/slack)
