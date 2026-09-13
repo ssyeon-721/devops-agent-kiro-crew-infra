@@ -1,0 +1,59 @@
+# 정상 상태 매니페스트 — reset.sh가 이 값으로 복원한다
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-poc
+  namespace: poc
+  labels:
+    app: web-poc
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: web-poc
+  template:
+    metadata:
+      labels:
+        app: web-poc
+    spec:
+      containers:
+        - name: web-poc
+          image: IMAGE_PLACEHOLDER   # CI에서 ECR URL:SHA로 교체
+          ports:
+            - containerPort: 8000
+          env:
+            - name: DB_HOST
+              value: "db.internal"   # 시나리오 3: 이 값을 없는 호스트명으로 교체
+            - name: DB_POOL_SIZE
+              value: "20"            # 시나리오 7: 이 값을 5로 축소
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"        # 시나리오 2: 이 값을 128Mi로 축소
+          readinessProbe:
+            httpGet:
+              path: /healthz         # 시나리오 5: /health로 오기하면 probe 실패
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-poc
+  namespace: poc
+spec:
+  selector:
+    app: web-poc
+  ports:
+    - port: 80
+      targetPort: 8000

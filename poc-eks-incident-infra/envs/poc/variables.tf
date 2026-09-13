@@ -1,0 +1,54 @@
+variable "aws_region" {
+  default = "ap-northeast-2"
+}
+
+variable "project" {
+  default = "poc-eks-incident"
+}
+
+# EKS
+variable "cluster_version" {
+  default = "1.31"
+}
+
+variable "node_desired_size" {
+  description = "워커 노드 desired count. 비용 절감 시 0으로"
+  default     = 2
+}
+
+variable "node_min_size" {
+  default = 0
+}
+
+variable "node_max_size" {
+  default = 4
+}
+
+variable "node_instance_type" {
+  default = "t3.large"
+}
+
+# Storage
+variable "artifact_bucket_force_destroy" {
+  description = "destroy 시 아티팩트 버킷 강제 삭제 여부"
+  default     = false
+}
+
+variable "artifact_retention_days" {
+  default = 30
+}
+
+variable "log_retention_days" {
+  default = 14
+}
+
+# Crew EC2
+variable "crew_instance_type" {
+  default = "t3a.medium"
+}
+
+variable "crew_ami_id" {
+  description = "AL2023 AMI ID (ap-northeast-2). 최신값은 콘솔에서 확인"
+  # aws ssm get-parameter --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64 --region ap-northeast-2
+  default = ""
+}
