@@ -162,8 +162,10 @@ resource "aws_iam_role_policy" "crew_reader_policy" {
 
 # ── Crew 조치 역할 (승인 후 AssumeRole, 세션 15분) ─────────
 resource "aws_iam_role" "crew_operator" {
-  name                 = "kirocrew-triage-operator"
-  max_session_duration = 900 # 15분
+  name = "kirocrew-triage-operator"
+  # IAM 역할 max_session_duration 하한은 3600초(1시간).
+  # 실제 15분 제한은 Crew가 AssumeRole 시 --duration-seconds 900으로 지정하여 달성한다.
+  max_session_duration = 3600
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
