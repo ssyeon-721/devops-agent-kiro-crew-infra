@@ -37,3 +37,7 @@ output "crew_reader_role_arn" {
 output "crew_operator_role_arn" {
   value = module.crew_host.operator_role_arn
 }
+
+output "github_actions_role_arn" {
+  value = module.github_oidc.role_arn
+}

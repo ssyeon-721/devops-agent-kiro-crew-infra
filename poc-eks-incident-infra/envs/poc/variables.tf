@@ -52,3 +52,15 @@ variable "crew_ami_id" {
   # aws ssm get-parameter --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64 --region ap-northeast-2
   default = ""
 }
+
+# GitHub OIDC
+variable "github_owner" {
+  description = "GitHub 사용자 또는 조직명"
+  default     = "ssyeon-721"
+}
+
+variable "github_repos" {
+  description = "OIDC AssumeRole 허용 레포 목록"
+  type        = list(string)
+  default     = ["devops-agent-kiro-crew-infra", "poc-eks-incident-app"]
+}

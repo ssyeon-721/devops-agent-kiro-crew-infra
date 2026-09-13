@@ -75,5 +75,13 @@ module "crew_host" {
   log_group_arn    = module.storage.log_group_arn
 }
 
+module "github_oidc" {
+  source = "../../modules/github-oidc"
+
+  project      = var.project
+  github_owner = var.github_owner
+  github_repos = var.github_repos
+}
+
 # alt_path 모듈은 Phase 6에서 apply
 # module "alt_path" { ... }
