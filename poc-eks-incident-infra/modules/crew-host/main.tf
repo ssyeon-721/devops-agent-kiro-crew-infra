@@ -4,7 +4,7 @@ data "aws_region" "current" {}
 # ── 보안그룹 ──────────────────────────────────────────────
 resource "aws_security_group" "crew" {
   name        = "${var.project}-crew-sg"
-  description = "Kiro Crew EC2 — 인바운드 없음, SSM 접속"
+  description = "Kiro Crew EC2 - no inbound, SSM access only"
   vpc_id      = var.vpc_id
 
   # 인바운드 0 (SSH 없음, SSM Session Manager로만 접속)
