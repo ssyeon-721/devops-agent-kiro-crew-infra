@@ -339,7 +339,10 @@
   - ⚠️ `kiro-cli` not found → **설치 + `kiro-cli login`(device-code, 브라우저 인터랙티브) 필요 — 사용자 수동**
   - ⚠️ `node` not found → 대시보드 프론트엔드에 Node 22+ 필요 (SSM 자동 설치 가능)
   - `kirocrew setup` 초기 설정 필요
-- [ ] `kiro-cli` 설치 + 로그인 (사용자 수동 — device-code)
+- [~] `kiro-cli` 설치 + 로그인
+  - [x] `kiro-cli` 설치 완료 (2.21.4, `curl -fsSL https://cli.kiro.dev/install | bash`, SSM 경유)
+  - [x] Node.js 22 설치 완료 (AL2023 `dnf install nodejs22`, v22.23.2 — 대시보드 프론트엔드용)
+  - [ ] **`kiro-cli login` (사용자 수동)** — SSM Session Manager로 접속 → `sudo su -` → `export PATH=/root/.local/bin:$PATH` → `kiro-cli login` → device-code 브라우저 인증. (root 홈에 로그인 저장돼야 root로 도는 Crew 서비스가 사용)
 - [ ] `kirocrew setup` + `kirocrew service install` → systemd 등록
 - [ ] Slack 토큰 연결 (`~/.kiro/crew/.env`)
 - [ ] read-only kubeconfig 주입
