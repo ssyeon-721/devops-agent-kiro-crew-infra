@@ -161,22 +161,40 @@
     - official-2: `incidents/2026-09-14T05-57-45Z/` (14종)
     - official-3: `incidents/2026-09-14T05-59-11Z/` (14종)
   - ⚠️ 감지 형태가 시나리오 1·2(OOMKilled)와 다름: 잘못된 설정으로 **기동 자체가 실패**(CrashLoopBackOff, exitCode 3). inject-03의 rollout timeout은 새 Pod가 Ready 안 되는 정상 결과.
-- [ ] 시나리오 4 — 잘못된 이미지 태그 (3회)
+- [x] 시나리오 4 — 잘못된 이미지 태그 (정식 3회 완료, 3/3 성공)
+  - **코드 수정 불필요**: 존재하지 않는 이미지 태그(`nonexistent-tag-99999`)로 배포 → 이미지 pull 실패. 앱 코드와 무관.
+  - **정식 결과**: 3회 모두 감지(ImagePullBackOff/ErrImagePull) ✅ + S3 13종 수집 ✅ + pod-describe Events에 결정적 신호 `ErrImagePull ... not found` 확보 ✅
+    - official-1: `incidents/2026-09-14T06-13-09Z/` (13종)
+    - official-2: `incidents/2026-09-14T06-15-19Z/` (13종)
+    - official-3: `incidents/2026-09-14T06-16-30Z/` (13종)
+  - ⚠️ 컨테이너가 한 번도 기동하지 못하므로 `logs/`(컨테이너 로그)가 없어 **13종**(파드 4 + 노드 9). 결정적 신호는 Events 타임라인. 로그 부재는 이 시나리오에서 정상.
 
 ### 2-3. 검증
 
-- [ ] S3 아티팩트 완전성 검증 (주입 12회 = 4시나리오 × 3회, 각 회차마다 아래 파일 세트 확인)
+- [x] S3 아티팩트 완전성 검증 (주입 12회 = 4시나리오 × 3회, 전부 확인 완료)
   - 실제 수집 파일(블로그/Operator README 기준):
-    - 파드 레벨 6종: `collected-data.json`, `failure-info.json`, `pod-manifest.yaml`, `pod-describe.yaml`, `logs/<container>.log`, `logs/<container>-previous.log`
+    - 파드 레벨: `collected-data.json`, `failure-info.json`, `pod-manifest.yaml`, `pod-describe.yaml`, `logs/<container>.log`, `logs/<container>-previous.log`
     - 노드 레벨(SSM) 9종: `kubelet.log`, `containerd.log`, `dmesg.log`, `ipamd.log`, `ipamd-introspection.log`, `networking.txt`, `disk-usage.txt`, `inode-usage.txt`, `mem-usage.txt`
-  - 시나리오별로 항상 15종이 다 나오지는 않을 수 있음(예: previous 로그는 재시작 이력이 있어야 생성). 시나리오 특성에 맞는 결정적 신호(§4.2 표)가 포함됐는지를 우선 확인
-- [ ] 누락 아티팩트 있으면 IAM/SSM 설정 재점검 (특히 노드 레벨 9종 누락 시 SSM 권한/`ENABLE_SSM_COLLECTION` 확인)
+  - **시나리오별 실측 수집량**: 1·2·3번 = 14종(파드 5 + 노드 9), 4번 = 13종(파드 4 + 노드 9, 컨테이너 미기동으로 로그 없음). 모두 시나리오 특성상 기대되는 결정적 신호 포함 → 완전.
+- [x] 누락 아티팩트 있으면 IAM/SSM 설정 재점검 → 노드 9종 누락 이슈는 SSM `GetCommandInvocation` 권한 수정으로 해결(2-1 기록)
 
 ### 2-4. Phase 2 종료 조건
 
-- [ ] 감지율 100% (주입 12회 전부 감지)
-- [ ] 수집 완전성: 각 회차에서 시나리오별 기대 아티팩트 누락 없음
-- [ ] 결과 간단 정리 (다음 Phase 전 끊어서 기록)
+- [x] 감지율 100% (주입 12회 전부 감지: 시나리오 1~4 각 3회)
+- [x] 수집 완전성: 각 회차에서 시나리오별 기대 아티팩트 누락 없음
+- [x] 결과 간단 정리 (아래 요약)
+
+**Phase 2 결과 요약**
+| 시나리오 | 원인 | 감지 형태 | 수집 | 결정적 신호 |
+|----------|------|-----------|------|-------------|
+| 1 코드 메모리 누수 | 코드 | OOMKilled | 14종 | dmesg OOM killer |
+| 2 limit 축소 | 설정 | OOMKilled | 14종 | manifest limit 축소 |
+| 3 잘못된 DB_HOST | 환경변수 | CrashLoop/Error | 14종 | previous 로그 DNS 실패 |
+| 4 잘못된 이미지 태그 | 배포 | ImagePullBackOff | 13종 | Events ErrImagePull |
+
+- **감지율 12/12 (100%)**, 수집 완전성 전부 충족 → H1·H2 실증 완료
+- 시나리오 1 vs 2는 증상(OOMKilled) 동일, 원인만 다름 → H3(Agent 구분)의 검증 준비 완료
+- **중단 기준 해당 없음** → Phase 3 진행 가능
 
 **중단 기준**: 감지율 100% 미달이고 원인이 설정 문제가 아닌 경우 → Phase 3 진행 안 함
 
