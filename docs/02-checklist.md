@@ -207,12 +207,16 @@
 - [x] Agent Space 생성 (**도쿄 `ap-northeast-1`** — 서울 미지원, §3.1)
   - 이름: `poc-eks-incident-agent`
   - 크로스 리전으로 서울 EKS 조사 (사전 검증 완료)
-- [ ] Generic Webhook 발급
-  - **HMAC Secret: CSV 즉시 다운로드 (재조회 불가)**
-  - Secrets Manager에 저장
+- [x] Generic Webhook 발급
+  - **HMAC Secret: CSV 즉시 다운로드 (재조회 불가)** → 완료
+  - Secrets Manager에 저장: `poc-devops-agent-incident-webhook` (ap-northeast-2, 키 `webhook-secret`)
+  - Webhook URL: `https://event-ai.ap-northeast-1.api.aws/webhook/generic/8c52ce55-...` (도쿄, 크로스 리전)
 - [x] GitHub Pipeline 연동 (app 레포 `poc-eks-incident-app`만 Source로 추가)
 - [x] Slack Communication 연동 (`#devops-agent-kiro-crew` 채널, 앱 초대 확인)
-- [ ] Operator 환경변수에 Webhook URL 주입, 재배포
+- [x] Operator 환경변수에 Webhook URL 주입, 재배포
+  - `05-deployment.yaml`의 `DEVOPS_AGENT_WEBHOOK_URL`을 실제 URL로 교체
+  - HMAC Secret은 git에 커밋하지 않음: Secrets Manager에서 읽어 K8s Secret으로 주입(`kubectl create secret ... --dry-run | apply`). `06-webhook-secret.yaml`은 주입 명령 안내용 주석만 유지
+  - 재배포 후 로그에서 실제 webhookURL 로드 확인 완료
 
 ### 3-2. 시나리오 주입 (각 3회)
 
