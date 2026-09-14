@@ -323,16 +323,25 @@
 
 **현황 / 선행 조건**
 - ✅ 이미 있음(terraform): Crew EC2(`i-03d7e0868fb975158`, stopped), IAM 3종(`crew-base-role`/`kirocrew-triage-reader`/`kirocrew-triage-operator`), 보안그룹(인바운드 0)
-- ⚠️ **불확실성 1 — Kiro Crew 소프트웨어**: `kirocrew` CLI의 설치 소스/방법이 문서에 미기재. [2]단계 진입 전 확정 필요.
+- ✅ **불확실성 1 해결 — Kiro Crew 소프트웨어 확인**: 공식 오픈소스 `github.com/kirodotdev/KiroCrew` (Apache 2.0), 문서 `kiro.dev/docs/crew`.
+  - 설치(AL2023/x86_64): 원라인 `curl -fsSL https://download.crew.kiro.dev/cli.sh | sh` (SHA-256 검증 wheel + 자체 CPython 3.12, system Python 미변경, `kirocrew` PATH 등록)
+  - 상주화: `kirocrew service install`(systemd) → `kirocrew doctor`
+  - ⚠️ **추가 의존성/제약**: 내부적으로 `kiro-cli`로 모델 접근하며 **Kiro 계정 device-code 로그인 필요**(브라우저 인터랙티브 → SSM 자동화 불가, 사용자 수동 단계). 대시보드는 `localhost:5476`(loopback), Slack 등 메시징은 outbound 연결이라 포트 노출 불필요.
+  - ⚠️ 네트워크: Crew EC2는 프라이빗 서브넷 + NAT 아웃바운드(egress all)라 CDN 다운로드 가능 예상 → 설치 시 확인.
 - ⚠️ **불확실성 2 — 조치용 EKS 접근**: operator 역할이 실제로 K8s 리소스를 바꾸려면 EKS access entry(네임스페이스 한정, edit 권한)가 필요. 현재 operator 역할은 `eks:DescribeCluster`만 있고 K8s RBAC 매핑 없음 → [5] 전에 추가 필요.
 - ⚠️ **불확실성 3 — H5 실측**: EventBridge `Investigation Completed` 이벤트의 실제 페이로드/발생 여부는 미실측(설계만 확정). [4]에서 실측.
 
 ### 5-1. Crew 설치
 
-- [ ] Crew EC2 인스턴스 기동
-- [ ] `kirocrew service install` → systemd 등록
+- [x] Crew EC2 인스턴스 기동 (`poc-eks-incident-kiro-crew-host`, running, SSM Online 확인)
+- [x] Kiro Crew 설치 — 원라인(`cli.sh`)으로 `kirocrew 0.6.0` 설치 완료 (SSM 경유, `HOME=/root` 지정 필요했음). `/root/.local/bin/kirocrew`, 관리형 CPython 3.12.13
+- [x] `kirocrew doctor` 실행 확인 — config dir 생성됨. 남은 의존성 파악:
+  - ⚠️ `kiro-cli` not found → **설치 + `kiro-cli login`(device-code, 브라우저 인터랙티브) 필요 — 사용자 수동**
+  - ⚠️ `node` not found → 대시보드 프론트엔드에 Node 22+ 필요 (SSM 자동 설치 가능)
+  - `kirocrew setup` 초기 설정 필요
+- [ ] `kiro-cli` 설치 + 로그인 (사용자 수동 — device-code)
+- [ ] `kirocrew setup` + `kirocrew service install` → systemd 등록
 - [ ] Slack 토큰 연결 (`~/.kiro/crew/.env`)
-- [ ] `kirocrew doctor` 통과
 - [ ] read-only kubeconfig 주입
 - [ ] Slack DM에서 수동 질의로 권한 검증
 
