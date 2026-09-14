@@ -292,6 +292,41 @@
 
 ## Phase 5 — Kiro Crew 조치 레이어
 
+> **진행 방침 (2026-09-14 결정)**: Phase 3의 모든 시나리오를 다 채점하기 전에,
+> "시나리오 1 진단 → Crew 조치"의 **end-to-end 한 줄기를 먼저 관통**한다.
+> 이유: 이 PoC의 실질 목표는 "정확한 진단이 실제 조치로 이어지는 통합 흐름"이므로,
+> 넓게(시나리오 확대)·깊게(3회 반복) 가기 전에 세로 축(진단→조치)을 먼저 증명하는 것이 가치가 크다.
+> 시나리오 1은 이미 Agent 진단 정답(1회) 확인됨 → 이걸 조치까지 연결한다.
+
+### 5-0. Crew 구축 실행 순서 (순서도)
+
+```
+[1] EC2 기동 + SSM 접속 확인            ← terraform으로 생성됨, 현재 stopped
+      │   (인바운드 0, SSM Session Manager 전용)
+      ▼
+[2] Kiro Crew 소프트웨어 설치            ⚠️ 설치 소스/방법 확인 필요 (최대 불확실성)
+      │   kirocrew service install / doctor
+      ▼
+[3] 연결 구성
+      ├── read-only kubeconfig 주입 (reader 역할)
+      └── Slack 토큰 연결 (~/.kiro/crew/.env)
+      ▼
+[4] H5 다리 구축 (terraform)             도쿄 Agent → 서울 Crew
+      │   EventBridge(Investigation Completed) → SNS → Lambda → Crew 트리거
+      ▼
+[5] 조치 플로우 구현
+      │   Slack 승인 버튼 → operator 역할 AssumeRole(15분) → rollout undo
+      ▼
+[6] end-to-end 테스트
+          시나리오 1 주입 → Agent 진단 → Crew 조치(롤백) → 해결 확인
+```
+
+**현황 / 선행 조건**
+- ✅ 이미 있음(terraform): Crew EC2(`i-03d7e0868fb975158`, stopped), IAM 3종(`crew-base-role`/`kirocrew-triage-reader`/`kirocrew-triage-operator`), 보안그룹(인바운드 0)
+- ⚠️ **불확실성 1 — Kiro Crew 소프트웨어**: `kirocrew` CLI의 설치 소스/방법이 문서에 미기재. [2]단계 진입 전 확정 필요.
+- ⚠️ **불확실성 2 — 조치용 EKS 접근**: operator 역할이 실제로 K8s 리소스를 바꾸려면 EKS access entry(네임스페이스 한정, edit 권한)가 필요. 현재 operator 역할은 `eks:DescribeCluster`만 있고 K8s RBAC 매핑 없음 → [5] 전에 추가 필요.
+- ⚠️ **불확실성 3 — H5 실측**: EventBridge `Investigation Completed` 이벤트의 실제 페이로드/발생 여부는 미실측(설계만 확정). [4]에서 실측.
+
 ### 5-1. Crew 설치
 
 - [ ] Crew EC2 인스턴스 기동
