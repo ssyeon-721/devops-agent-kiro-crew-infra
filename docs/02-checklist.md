@@ -153,7 +153,14 @@
     - official-3: `incidents/2026-09-14T05-24-11Z/` (14종)
   - ⚠️ **주의**: reset(512Mi)→patch(128Mi) 2회 스펙 변경이 롤아웃을 두 번 유발해, 롤아웃 완전 안정 후 Pod를 잡아야 함(아니면 대상 Pod가 교체돼 호출이 유실). inject-02 스크립트는 `/leak`→`/work?mb=100` 순차 호출로 수정.
   - ⚠️ **증상은 시나리오 1과 동일(OOMKilled/137)**, 차이는 원인(코드 누수 vs limit 축소). 이 구분이 H3 검증 대상.
-- [ ] 시나리오 3 — 잘못된 DB_HOST (3회)
+- [x] 시나리오 3 — 잘못된 DB_HOST (정식 3회 완료, 3/3 성공)
+  - **코드 수정 필요했음**: 기존 lifespan은 DNS 실패를 잡고 로그만 남겨 앱이 안 죽었음 → Operator가 감지 못 함(문서 의도와 불일치). DNS 실패 시 **fail-fast(예외 re-raise)**로 변경해 CrashLoop 유도.
+  - **정상값도 함께 수정**: 기존 정상 `DB_HOST=db.internal`은 클러스터에서 DNS 해석이 안 됨 → fail-fast 코드 넣으면 정상 상태에서도 죽어 다른 시나리오 baseline이 깨짐. 정상값을 `kubernetes.default.svc.cluster.local`(항상 해석됨)로 변경. 베이스라인 커밋 `b77144e`.
+  - **정식 결과**: 3회 모두 감지(ContainerTerminated/Error → CrashLoopBackOff) ✅ + S3 14종 완전 수집 ✅ + previous 로그에 결정적 신호 `DB_HOST DNS resolution FAILED: nonexistent-db.invalid` 확보 ✅
+    - official-1: `incidents/2026-09-14T05-54-39Z/` (14종)
+    - official-2: `incidents/2026-09-14T05-57-45Z/` (14종)
+    - official-3: `incidents/2026-09-14T05-59-11Z/` (14종)
+  - ⚠️ 감지 형태가 시나리오 1·2(OOMKilled)와 다름: 잘못된 설정으로 **기동 자체가 실패**(CrashLoopBackOff, exitCode 3). inject-03의 rollout timeout은 새 Pod가 Ready 안 되는 정상 결과.
 - [ ] 시나리오 4 — 잘못된 이미지 태그 (3회)
 
 ### 2-3. 검증
