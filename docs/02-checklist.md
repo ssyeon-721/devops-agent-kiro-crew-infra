@@ -143,7 +143,16 @@
     - official-3: `incidents/2026-09-14T04-50-43Z/` (14종)
   - ⚠️ **발견/수정한 버그**: `operator-iam` 정책의 `ssm:GetCommandInvocation` 리소스 범위가 instance/document로 한정돼 있어 노드 로그 9종 전부 누락. `GetCommandInvocation`은 command invocation 리소스 대상이라 별도 statement(Resource="*")로 분리 후 apply → 해결 (파일럿 run1 5종 → run2/정식 14종)
   - ⚠️ **주입 시 주의**: inject 스크립트가 rollout 직후 Pod를 잡는데, 롤아웃 중 대상 Pod가 교체되면 누적 메모리가 날아가 OOM이 안 남. rollout 완료 대기 후 안정된 Pod에 `/leak?mb=50` 집중 호출해야 함. exec가 OOM으로 응답 없이 끊겨도 실제 OOM은 발생하므로 Pod RESTARTS/S3 결과로 판정
-- [ ] 시나리오 2 — limit 축소 (3회)
+- [x] 시나리오 2 — limit 축소 (정식 3회 완료, 3/3 성공)
+  - **베이스라인 재정의**: 시나리오 1의 `/leak`(누수)은 제거하고, 정상 처리 엔드포인트 `/work?mb=N`을 추가한 새 베이스라인 커밋(`163da4a`)으로 빌드.
+    - `/work`는 요청 처리 중 임시로 메모리를 쓰고 반환하는 **정상 기능**(누수 아님). 커밋 이력상 누수 추가가 없으므로 시나리오 2의 "코드 변경 없음" 신호가 성립.
+  - **주입 방식**: limit 512Mi→128Mi 축소 + `/work?mb=100` 호출. 앱 기본(~33MB)+100MB > 128Mi라 **정상 요청 하나로 OOMKilled**. 운영 현실("코드 정상, limit 설정 실수로 부하 시 OOM")과 일치.
+  - **정식 결과**: 3회 모두 OOMKilled 감지 ✅ + S3 14종 완전 수집 ✅
+    - official-1: `incidents/2026-09-14T05-20-04Z/` (14종)
+    - official-2: `incidents/2026-09-14T05-22-34Z/` (14종)
+    - official-3: `incidents/2026-09-14T05-24-11Z/` (14종)
+  - ⚠️ **주의**: reset(512Mi)→patch(128Mi) 2회 스펙 변경이 롤아웃을 두 번 유발해, 롤아웃 완전 안정 후 Pod를 잡아야 함(아니면 대상 Pod가 교체돼 호출이 유실). inject-02 스크립트는 `/leak`→`/work?mb=100` 순차 호출로 수정.
+  - ⚠️ **증상은 시나리오 1과 동일(OOMKilled/137)**, 차이는 원인(코드 누수 vs limit 축소). 이 구분이 H3 검증 대상.
 - [ ] 시나리오 3 — 잘못된 DB_HOST (3회)
 - [ ] 시나리오 4 — 잘못된 이미지 태그 (3회)
 
