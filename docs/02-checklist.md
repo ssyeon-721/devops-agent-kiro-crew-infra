@@ -345,7 +345,10 @@
   - ⚠️ **root 설치 → 전용 유저로 전환**: `kirocrew service install`이 "root로 agent 실행 거부"(보안 정책: gateway가 untrusted tool 실행). 전용 유저 `kirocrew`(uid 1001) 생성 후 그 유저 홈에 Crew/kiro-cli 재설치. 로그인은 device-flow(브라우저 자동 오픈 불가 → `kiro-cli login --use-device-flow`)로 진행.
   - [x] `kirocrew` 유저 생성 + Crew 0.6.0 / kiro-cli 2.21.4 재설치 + `setup --agent-only`(config 생성)
   - [ ] **`kiro-cli login` (사용자 수동, kirocrew 유저로)** — `sudo -u kirocrew -H bash -l` → `kiro-cli login --use-device-flow` → 브라우저 device 인증
-- [ ] `kirocrew service install` → systemd 등록 (kirocrew 유저)
+- [x] systemd 서비스 등록 완료 (`kirocrew.service`, active + enabled)
+  - ⚠️ **`kirocrew service install`이 sudo 비밀번호 요구** → 보안 판단: 서비스 계정에 NOPASSWD sudo 상시 부여(A)는 "untrusted tool 실행 계정의 권한 상승 경로"라 거부. 대신 **root로 unit 파일만 일회성 생성(B)** 채택 → `kirocrew` 유저는 sudo 없는 순수 일반 유저로 유지.
+  - unit: `User=kirocrew`(비-root 실행), `ExecStart=/home/kirocrew/.local/bin/kirocrew gateway`, HOME/USER/PATH 환경 지정, `Restart=on-failure`, `WantedBy=multi-user.target`
+  - gateway + kiro-cli ACP + OS 샌드박스(rlimit/oom) 정상 기동 확인. dashboard `localhost:5476`(loopback)
 - [ ] Slack 토큰 연결 (`~/.kiro/crew/.env`)
 - [ ] read-only kubeconfig 주입
 - [ ] Slack DM에서 수동 질의로 권한 검증
