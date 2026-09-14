@@ -134,13 +134,15 @@
 
 > 주입 전 체크: Operator Pod Running 확인, `reset.sh` 실행으로 초기 상태 확인
 
-- [~] 시나리오 1 — 코드 메모리 누수 (파일럿 완료, 정식 3회는 재실행 예정)
+- [x] 시나리오 1 — 코드 메모리 누수 (정식 3회 완료, 3/3 성공)
   - 누수 코드를 실제 커밋으로 추가 후 배포 필수
   - **베이스라인 확립**: app `main.py`에서 `/leak` 제거 → 정상 이미지(`a890513`) 빌드/배포. 이후 `/leak`을 별도 커밋(`08d9807`)으로 추가 = 시나리오 1의 ground_truth 커밋
-  - **run1** (SSM 권한 버그 상태): OOMKilled 감지 ✅, S3 5종만 저장(노드 9종 누락 ❌) → 무효 처리
-  - **run2** (권한 수정 후): OOMKilled 감지 ✅, S3 14종 저장(파드 5 + 노드 9) ✅, dmesg 커널 OOM killer 포함 ✅ → 성공
-  - ⚠️ **발견/수정한 버그**: `operator-iam` 정책의 `ssm:GetCommandInvocation` 리소스 범위가 instance/document로 한정돼 있어 노드 로그 9종 전부 누락. `GetCommandInvocation`은 command invocation 리소스 대상이라 별도 statement(Resource="*")로 분리 후 apply → 해결
-  - ⚠️ **주입 시 주의**: inject 스크립트가 rollout 직후 Pod를 잡는데, 롤아웃 중 대상 Pod가 교체되면 누적 메모리가 날아가 OOM이 안 남. rollout 완료 대기 후 안정된 Pod에 `/leak?mb=50` 집중 호출해야 함
+  - **정식 결과** (SSM 권한 수정 후): 3회 모두 OOMKilled 감지 ✅ + S3 14종(파드 5 + 노드 9) 완전 수집 ✅
+    - official-1: `incidents/2026-09-14T04-42-23Z/` (14종)
+    - official-2: `incidents/2026-09-14T04-47-53Z/` (14종)
+    - official-3: `incidents/2026-09-14T04-50-43Z/` (14종)
+  - ⚠️ **발견/수정한 버그**: `operator-iam` 정책의 `ssm:GetCommandInvocation` 리소스 범위가 instance/document로 한정돼 있어 노드 로그 9종 전부 누락. `GetCommandInvocation`은 command invocation 리소스 대상이라 별도 statement(Resource="*")로 분리 후 apply → 해결 (파일럿 run1 5종 → run2/정식 14종)
+  - ⚠️ **주입 시 주의**: inject 스크립트가 rollout 직후 Pod를 잡는데, 롤아웃 중 대상 Pod가 교체되면 누적 메모리가 날아가 OOM이 안 남. rollout 완료 대기 후 안정된 Pod에 `/leak?mb=50` 집중 호출해야 함. exec가 OOM으로 응답 없이 끊겨도 실제 OOM은 발생하므로 Pod RESTARTS/S3 결과로 판정
 - [ ] 시나리오 2 — limit 축소 (3회)
 - [ ] 시나리오 3 — 잘못된 DB_HOST (3회)
 - [ ] 시나리오 4 — 잘못된 이미지 태그 (3회)
