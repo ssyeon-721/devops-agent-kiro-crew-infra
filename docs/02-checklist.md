@@ -218,6 +218,12 @@
   - HMAC Secret은 git에 커밋하지 않음: Secrets Manager에서 읽어 K8s Secret으로 주입(`kubectl create secret ... --dry-run | apply`). `06-webhook-secret.yaml`은 주입 명령 안내용 주석만 유지
   - 재배포 후 로그에서 실제 webhookURL 로드 확인 완료
 
+- [x] **연결 검증 (end-to-end)**: 시나리오 4 1회 주입으로 전체 경로 확인
+  - Operator webhook 전송 → **`status: 200`** (Phase 2 더미의 connection refused와 대비)
+  - 도쿄 Agent가 서울 EKS 장애를 크로스 리전으로 수신 → `Investigation started: Pod ErrImagePull: poc/web-poc-557b67c77-qtq6h`
+  - Slack `#devops-agent-kiro-crew`에 조사 시작 알림 수신 확인
+  - 경로: 장애 → Operator 감지·수집(서울) → S3 저장 → webhook 200 → 도쿄 Agent 조사 시작 → Slack ✅
+
 ### 3-2. 시나리오 주입 (각 3회)
 
 - [ ] 시나리오 1 (3회) — 코드 메모리 누수
