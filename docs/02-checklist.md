@@ -204,7 +204,8 @@
 
 ### 3-1. DevOps Agent 설정 (콘솔 수동)
 
-- [ ] Agent Space 생성 (**도쿄 `ap-northeast-1`** — 서울 미지원, §3.1)
+- [x] Agent Space 생성 (**도쿄 `ap-northeast-1`** — 서울 미지원, §3.1)
+  - 이름: `poc-eks-incident-agent`
   - 크로스 리전으로 서울 EKS 조사 (사전 검증 완료)
 - [ ] Generic Webhook 발급
   - **HMAC Secret: CSV 즉시 다운로드 (재조회 불가)**

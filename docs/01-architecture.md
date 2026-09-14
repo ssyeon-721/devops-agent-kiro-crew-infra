@@ -333,6 +333,9 @@ DevOps Agent는 `aws.aidevops` 소스로 default 이벤트 버스에 이벤트�
 }
 ```
 
+> Agent Space 이름은 `poc-eks-incident-agent` (도쿄 `ap-northeast-1`)로 생성됨.
+> 단, `agent_space_id`는 **이름이 아니라 콘솔이 발급하는 고유 ID**이므로, Phase 3에서 콘솔에서 실제 ID를 확인해 `<our-agent-space-id>`를 교체해야 한다.
+
 **의의**
 - 원래 A안(Webhook 재발급)의 "조사 완료를 내보내는지 불확실" 문제, B안(Slack 파싱)의 "포맷 변경 취약" 문제를 모두 우회한다.
 - Phase 6 보조 경로(EventBridge→SNS→Lambda→Crew)와 **동일한 구조**라 아키텍처 일관성이 높다.
