@@ -10,16 +10,24 @@ resource "aws_iam_policy" "operator" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "SSMNodeCollection"
+        # SendCommand: 대상 인스턴스와 실행 문서로 리소스 한정
+        Sid    = "SSMSendCommand"
         Effect = "Allow"
-        Action = [
-          "ssm:SendCommand",
-          "ssm:GetCommandInvocation",
-        ]
+        Action = ["ssm:SendCommand"]
         Resource = [
           "arn:aws:ec2:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:instance/*",
           "arn:aws:ssm:${data.aws_region.current.name}::document/AWS-RunShellScript",
         ]
+      },
+      {
+        # GetCommandInvocation: command invocation 리소스를 대상으로 하며
+        # SendCommand의 리소스 형식(instance/document)과 매칭되지 않는다.
+        # 계정/리전 범위로 허용해야 노드 로그 수집 결과를 조회할 수 있다.
+        # (이 권한이 없으면 SSM 노드 로그 9종이 전부 누락됨 — Phase 2-1 파일럿에서 발견)
+        Sid    = "SSMGetCommandInvocation"
+        Effect = "Allow"
+        Action = ["ssm:GetCommandInvocation"]
+        Resource = "*"
       },
       {
         Sid    = "S3ArtifactWrite"
