@@ -210,8 +210,8 @@
 - [ ] Generic Webhook 발급
   - **HMAC Secret: CSV 즉시 다운로드 (재조회 불가)**
   - Secrets Manager에 저장
-- [ ] GitHub Pipeline 연동 (app 레포만)
-- [ ] Slack Communication 연동 (`#eks-poc` 채널, 앱 초대 확인)
+- [x] GitHub Pipeline 연동 (app 레포 `poc-eks-incident-app`만 Source로 추가)
+- [x] Slack Communication 연동 (`#devops-agent-kiro-crew` 채널, 앱 초대 확인)
 - [ ] Operator 환경변수에 Webhook URL 주입, 재배포
 
 ### 3-2. 시나리오 주입 (각 3회)
