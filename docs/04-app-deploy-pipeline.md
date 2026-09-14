@@ -187,3 +187,58 @@ git과 다르다:
 > 그 컨베이어가 창고에 접근하려면 열쇠가 필요한데, 영구 열쇠(액세스 키)는 위험하니 그때그때 임시 출입증(OIDC)을 쓴다."
 
 로컬에서 한 번 빌드해서 올리는 것보다 초기 세팅은 번거롭지만, 재현 가능하고 안전하고 자동화된다는 이점이 있다. 특히 이 PoC는 이미지를 여러 번 다시 빌드(시나리오 1의 누수 커밋 등)하므로 자동 파이프라인의 가치가 크다.
+
+---
+
+## 9. Operator는 어떻게 배포되나 (Phase 2)
+
+테스트 워크로드(app)와 흐름은 같지만, Operator는 **우리가 짠 코드가 아니라 외부 오픈소스**라는 점이 다르다. 그래서 "소스를 우리 레포로 가져오는" 단계가 하나 더 붙는다.
+
+### 9.1 전체 흐름
+
+```
+[1] GitHub 오픈소스 (aws-samples 모노레포)
+    kr-tech-blog-sample-code/containers/devops-agent-operator/
+        │  이 하위 폴더의 소스만 가져옴
+        ▼
+[2] 우리 GitHub 레포 (poc-eks-incident-operator, 새로 생성)
+        │  가져온 소스를 넣고 push
+        ▼
+[3] GitHub Actions CI  ← EKS 안이 아니라 GitHub의 amd64 러너에서 빌드
+        │  docker build 로 컨테이너 이미지 생성
+        │  OIDC 로 AWS 임시 자격증명 획득
+        ▼
+[4] ECR (poc-eks-incident-operator)  ← 코드가 아니라 "이미지"를 저장
+        │
+        │  kubectl apply → EKS 가 이미지 pull
+        ▼
+[5] EKS: Operator Pod 실행
+```
+
+### 9.2 자주 헷갈리는 두 가지
+
+**(1) 빌드는 EKS 안에서 하지 않는다.**
+빌드는 GitHub Actions 러너(GitHub이 제공하는 임시 리눅스 서버)에서 한다. EKS는 다 만들어진 이미지를 *받아서 실행*만 한다.
+- 왜 CI에서 빌드하나: 이 맥은 arm64인데 EKS 노드는 amd64라 로컬 빌드가 막혔다(§4, Rosetta 설치 실패). GitHub Actions 러너는 amd64라 이 문제가 없다. app 이미지도 같은 이유로 CI에서 빌드했다.
+
+**(2) ECR에 저장되는 건 코드가 아니라 이미지다.**
+- 코드(Go 소스) → **GitHub 레포**에 저장
+- 이미지(코드를 컨테이너로 포장한 결과물) → **ECR**에 저장
+
+Dockerfile이 하는 일이 "Go 코드 + 실행 환경"을 하나의 이미지로 굽는 것이다. EKS는 소스코드를 실행할 수 없고 이미지만 실행할 수 있어서 이 포장 단계가 필요하다.
+
+### 9.3 왜 굳이 우리 레포로 옮기나
+
+남의 모노레포 하위 폴더를 그대로 쓸 수 없는 이유가 두 가지다.
+- GitHub Actions CI는 **레포 루트의 `.github/`** 에서만 동작한다. 우리가 제어하는 레포가 필요하다.
+- OIDC로 ECR에 push하려면 그 레포가 **AWS 신뢰정책(`modules/github-oidc`)에 등록**돼야 한다. 그래서 새 레포를 만들면 OIDC 정책에 레포를 추가하는 terraform apply가 따라온다.
+
+### 9.4 app과의 차이 한눈에
+
+| 구분 | app (web-poc) | Operator |
+|------|---------------|----------|
+| 코드 출처 | 우리가 직접 작성 | 외부 오픈소스(aws-samples)를 가져옴 |
+| GitHub 레포 | `poc-eks-incident-app` | `poc-eks-incident-operator` (신규) |
+| ECR 레포 | `poc-eks-incident-app` | `poc-eks-incident-operator` |
+| 빌드 위치 | GitHub Actions (amd64) | 동일 |
+| 배포 방식 | kubectl apply | 동일 (RBAC/ConfigMap/Deployment) |
