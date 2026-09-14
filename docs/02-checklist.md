@@ -134,13 +134,17 @@
 
 ### 2-3. 검증
 
-- [ ] S3 아티팩트 12종 완전성 검증 (12건 × 4시나리오 × 3회)
-- [ ] 누락 아티팩트 있으면 IAM/SSM 설정 재점검
+- [ ] S3 아티팩트 완전성 검증 (주입 12회 = 4시나리오 × 3회, 각 회차마다 아래 파일 세트 확인)
+  - 실제 수집 파일(블로그/Operator README 기준):
+    - 파드 레벨 6종: `collected-data.json`, `failure-info.json`, `pod-manifest.yaml`, `pod-describe.yaml`, `logs/<container>.log`, `logs/<container>-previous.log`
+    - 노드 레벨(SSM) 9종: `kubelet.log`, `containerd.log`, `dmesg.log`, `ipamd.log`, `ipamd-introspection.log`, `networking.txt`, `disk-usage.txt`, `inode-usage.txt`, `mem-usage.txt`
+  - 시나리오별로 항상 15종이 다 나오지는 않을 수 있음(예: previous 로그는 재시작 이력이 있어야 생성). 시나리오 특성에 맞는 결정적 신호(§4.2 표)가 포함됐는지를 우선 확인
+- [ ] 누락 아티팩트 있으면 IAM/SSM 설정 재점검 (특히 노드 레벨 9종 누락 시 SSM 권한/`ENABLE_SSM_COLLECTION` 확인)
 
 ### 2-4. Phase 2 종료 조건
 
-- [ ] 감지율 100% (12/12회)
-- [ ] 수집 완전성 12/12
+- [ ] 감지율 100% (주입 12회 전부 감지)
+- [ ] 수집 완전성: 각 회차에서 시나리오별 기대 아티팩트 누락 없음
 - [ ] 결과 간단 정리 (다음 Phase 전 끊어서 기록)
 
 **중단 기준**: 감지율 100% 미달이고 원인이 설정 문제가 아닌 경우 → Phase 3 진행 안 함

@@ -105,7 +105,7 @@ Operator에게 조치를 시키지 않는 이유: 컨트롤 루프 특성상 조
 | 지표 | 정의 | 목표 | 미달 시 |
 |------|------|------|---------|
 | 감지율 | 주입 장애 중 Operator가 감지한 비율 | 100% | Phase 2 재작업 |
-| 수집 완전성 | 기대 아티팩트 12종 중 실제 수집 개수 | 12/12 | IAM·SSM 설정 재점검 |
+| 수집 완전성 | 시나리오별 기대 아티팩트(파드 6종 + 노드 SSM 9종) 누락 여부 | 누락 0 | IAM·SSM 설정 재점검 |
 | 원인 적중률 | 심은 원인을 Agent가 정확히 짚은 비율 | 6/7 이상 | Phase 5 중단 |
 | 구분 정확도 | 시나리오 1과 2를 다르게 진단한 비율 | 3/3 | Runbook 재설계 |
 | 재현 일관성 | 동일 장애 3회 반복 시 동일 진단 비율 | 3/3 | 결과 자체가 산출물 |
@@ -558,8 +558,8 @@ H5 연결 방식은 Phase 1에서 조사 완료했다(§6.1). GA 이후 도입�
 
 ## 참고 자료
 
-- [Agent로 최적화하는 EKS 운영: AWS DevOps Agent + K8s Operator로 MTTR 줄이기](https://aws.amazon.com/ko/blogs/tech/eks-devops-agent-operator-mttr/)
-- [DevOps Agent Operator 소스 코드](https://github.com/aws-samples/devops-agent-operator)
+- [Agent로 최적화하는 EKS 운영: AWS DevOps Agent + K8s Operator로 MTTR 줄이기](https://aws.amazon.com/ko/blogs/tech/aws-devops-agent-k8s-operator/)
+- [DevOps Agent Operator 소스 코드](https://github.com/aws-samples/kr-tech-blog-sample-code/tree/main/containers/devops-agent-operator) — aws-samples 모노레포(`kr-tech-blog-sample-code`)의 `containers/devops-agent-operator/` 하위 경로. 전용 레포가 아님. 컨테이너 이미지는 미제공이라 Dockerfile로 직접 빌드해야 함(Phase 2 첫 작업)
 - [AWS DevOps Agent 공식 페이지](https://aws.amazon.com/devops-agent/)
 - [DevOps Agent Runbook 가이드](https://docs.aws.amazon.com/devops-agent/latest/userguide/runbooks.html)
 - [AWS DevOps Agent + Amazon EventBridge 통합 (H5 해결 근거)](https://docs.aws.amazon.com/devopsagent/latest/userguide/configuring-integrations-and-knowledge-integrating-devops-agent-into-event-driven-applications-using-amazon-eventbridge-index.html)
