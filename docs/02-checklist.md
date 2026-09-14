@@ -223,6 +223,12 @@
   - 도쿄 Agent가 서울 EKS 장애를 크로스 리전으로 수신 → `Investigation started: Pod ErrImagePull: poc/web-poc-557b67c77-qtq6h`
   - Slack `#devops-agent-kiro-crew`에 조사 시작 알림 수신 확인
   - 경로: 장애 → Operator 감지·수집(서울) → S3 저장 → webhook 200 → 도쿄 Agent 조사 시작 → Slack ✅
+  - ⚠️ **첫 조사에서 Agent 권한 문제 3건 발견 (조사 결과 리포트로 드러남)** — 원인 진단(nonexistent 이미지 태그)은 ECR 조회로 정확히 맞혔으나, 아래 접근 실패로 "Investigation failed" 판정:
+    1. **EKS API 접근 거부**: Agent 역할이 클러스터 access entry에 없었음 → `modules/eks`에 Agent 역할 access entry + `AmazonEKSViewPolicy`(읽기 전용) 추가
+    2. **S3 아티팩트 AccessDenied**: Agent 역할이 인시던트 버킷 읽기 권한 없었음 → `modules/storage`에 Agent 역할 S3 GetObject/ListBucket 인라인 정책 추가
+    3. **control-plane 로깅 off**(audit trail 부재): 활성화 시도했으나 워커 서브넷 /28(시나리오6용) IP 부족으로 EKS가 거부 → 보류(audit은 보조 신호, 원인 진단엔 지장 없음). 향후 넓은 서브넷 확보 시 재시도.
+  - Agent 조사 역할: `DevOpsAgentRole-AgentSpace-6j8n9zaq` (콘솔 auto-create, tfvars에 기록). Agent Space 재생성 시 접미사 변경되므로 값 갱신 필요.
+  - ⚠️ **진행 교훈**: Agent 조사가 끝나기 전에 reset하면 라이브 리소스 조회가 실패할 수 있음 → 조사 완료까지 대기 후 reset.
 
 ### 3-2. 시나리오 주입 (각 3회)
 

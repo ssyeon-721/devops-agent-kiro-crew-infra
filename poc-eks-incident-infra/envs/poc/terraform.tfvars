@@ -22,3 +22,9 @@ github_repos = [
   "poc-eks-incident-app",
   "poc-eks-incident-operator",
 ]
+
+# DevOps Agent Space(poc-eks-incident-agent, 도쿄) 조사 역할 — 콘솔 auto-create
+# Agent가 EKS(K8s API)와 S3 인시던트 아티팩트를 조사할 수 있도록 권한 부여
+# 주의: Agent Space를 재생성하면 역할 접미사가 바뀌므로 값 갱신 필요
+devops_agent_role_arn  = "arn:aws:iam::084828589246:role/service-role/DevOpsAgentRole-AgentSpace-6j8n9zaq"
+devops_agent_role_name = "DevOpsAgentRole-AgentSpace-6j8n9zaq"

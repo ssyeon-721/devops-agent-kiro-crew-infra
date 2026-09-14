@@ -64,3 +64,17 @@ variable "github_repos" {
   type        = list(string)
   default     = ["devops-agent-kiro-crew-infra", "poc-eks-incident-app"]
 }
+
+# DevOps Agent Space 조사 역할 (콘솔 auto-create)
+# Agent가 EKS/S3를 조사하려면 이 역할에 접근 권한을 부여해야 한다.
+variable "devops_agent_role_arn" {
+  description = "DevOps Agent 조사 역할 ARN (EKS access entry 대상)"
+  type        = string
+  default     = ""
+}
+
+variable "devops_agent_role_name" {
+  description = "DevOps Agent 조사 역할 이름 (S3 인시던트 버킷 읽기 권한 대상)"
+  type        = string
+  default     = ""
+}

@@ -16,6 +16,12 @@ resource "aws_eks_cluster" "main" {
     authentication_mode = "API_AND_CONFIG_MAP"
   }
 
+  # control-plane 로깅(audit)은 활성화 시 EKS가 ENI를 추가로 요구하는데,
+  # 워커 서브넷이 /28(시나리오 6 IP 고갈용)이라 여유 IP 부족으로 활성화가 거부된다.
+  # audit 추적은 Agent 조사의 보조 신호일 뿐이므로 PoC에서는 비활성 유지한다.
+  # (활성화하려면 별도 넓은 서브넷 확보 필요 — 향후 과제)
+  # enabled_cluster_log_types = ["api", "audit", "authenticator"]
+
   depends_on = [
     aws_iam_role_policy_attachment.cluster_policy,
     aws_iam_role_policy_attachment.vpc_resource_controller,
@@ -40,6 +46,28 @@ resource "aws_eks_access_policy_association" "admin" {
   }
 
   depends_on = [aws_eks_access_entry.admin]
+}
+
+# DevOps Agent 조사 역할에 EKS 읽기 접근 부여 (조사는 읽기 전용이므로 View 정책).
+# devops_agent_role_arn가 비어있으면 생성하지 않는다.
+resource "aws_eks_access_entry" "devops_agent" {
+  count         = var.devops_agent_role_arn != "" ? 1 : 0
+  cluster_name  = aws_eks_cluster.main.name
+  principal_arn = var.devops_agent_role_arn
+  type          = "STANDARD"
+}
+
+resource "aws_eks_access_policy_association" "devops_agent" {
+  count         = var.devops_agent_role_arn != "" ? 1 : 0
+  cluster_name  = aws_eks_cluster.main.name
+  principal_arn = var.devops_agent_role_arn
+  policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSViewPolicy"
+
+  access_scope {
+    type = "cluster"
+  }
+
+  depends_on = [aws_eks_access_entry.devops_agent]
 }
 
 # 관리형 노드그룹

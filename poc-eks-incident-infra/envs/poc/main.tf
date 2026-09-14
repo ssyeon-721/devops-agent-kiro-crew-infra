@@ -37,6 +37,7 @@ module "eks" {
   node_min_size      = var.node_min_size
   node_max_size      = var.node_max_size
   node_instance_type = var.node_instance_type
+  devops_agent_role_arn = var.devops_agent_role_arn
 }
 
 module "operator_iam" {
@@ -55,6 +56,7 @@ module "storage" {
   artifact_retention_days       = var.artifact_retention_days
   log_retention_days            = var.log_retention_days
   artifact_bucket_force_destroy = var.artifact_bucket_force_destroy
+  devops_agent_role_name        = var.devops_agent_role_name
 }
 
 module "registry" {
