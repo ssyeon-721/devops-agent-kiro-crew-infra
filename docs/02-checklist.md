@@ -342,8 +342,10 @@
 - [~] `kiro-cli` 설치 + 로그인
   - [x] `kiro-cli` 설치 완료 (2.21.4, `curl -fsSL https://cli.kiro.dev/install | bash`, SSM 경유)
   - [x] Node.js 22 설치 완료 (AL2023 `dnf install nodejs22`, v22.23.2 — 대시보드 프론트엔드용)
-  - [ ] **`kiro-cli login` (사용자 수동)** — SSM Session Manager로 접속 → `sudo su -` → `export PATH=/root/.local/bin:$PATH` → `kiro-cli login` → device-code 브라우저 인증. (root 홈에 로그인 저장돼야 root로 도는 Crew 서비스가 사용)
-- [ ] `kirocrew setup` + `kirocrew service install` → systemd 등록
+  - ⚠️ **root 설치 → 전용 유저로 전환**: `kirocrew service install`이 "root로 agent 실행 거부"(보안 정책: gateway가 untrusted tool 실행). 전용 유저 `kirocrew`(uid 1001) 생성 후 그 유저 홈에 Crew/kiro-cli 재설치. 로그인은 device-flow(브라우저 자동 오픈 불가 → `kiro-cli login --use-device-flow`)로 진행.
+  - [x] `kirocrew` 유저 생성 + Crew 0.6.0 / kiro-cli 2.21.4 재설치 + `setup --agent-only`(config 생성)
+  - [ ] **`kiro-cli login` (사용자 수동, kirocrew 유저로)** — `sudo -u kirocrew -H bash -l` → `kiro-cli login --use-device-flow` → 브라우저 device 인증
+- [ ] `kirocrew service install` → systemd 등록 (kirocrew 유저)
 - [ ] Slack 토큰 연결 (`~/.kiro/crew/.env`)
 - [ ] read-only kubeconfig 주입
 - [ ] Slack DM에서 수동 질의로 권한 검증
