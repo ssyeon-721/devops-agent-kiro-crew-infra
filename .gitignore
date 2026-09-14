@@ -21,3 +21,7 @@ plan_output.txt
 # 이 폴더는 워크스페이스에서 편집하되, 자체 .git으로 app 레포에 직접 푸시한다.
 # infra 레포는 이 폴더를 추적하지 않는다. (docs/05 참고)
 poc-eks-incident-app/
+
+# operator도 별도 레포(poc-eks-incident-operator)로 관리한다. (app과 동일 원리)
+# 외부 오픈소스를 가져와 자체 .git으로 operator 레포에 푸시한다. (docs/04 §9)
+poc-eks-incident-operator/

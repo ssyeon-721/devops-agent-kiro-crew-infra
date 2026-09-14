@@ -14,3 +14,11 @@ crew_ami_id = "ami-0fad23d064f9e8330"
 artifact_bucket_force_destroy = false
 artifact_retention_days       = 30
 log_retention_days            = 14
+
+# OIDC AssumeRole 허용 레포 (ECR 푸시용)
+# operator 레포 추가: Phase 2에서 Operator 이미지를 CI로 빌드/푸시
+github_repos = [
+  "devops-agent-kiro-crew-infra",
+  "poc-eks-incident-app",
+  "poc-eks-incident-operator",
+]

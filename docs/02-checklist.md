@@ -110,17 +110,25 @@
 
 ### 2-1. Operator 배포
 
-- [ ] DevOps Agent Operator 소스 코드 클론
-- [ ] Dockerfile 빌드 → ECR (`poc-operator`) 푸시
-- [ ] K8s RBAC 매니페스트 적용
-  - ClusterRole: pods, pods/log, events, nodes, deployments, replicasets (get/list/watch)
-  - ClusterRoleBinding
-- [ ] ConfigMap 설정
-  - `EXCLUDE_NAMESPACES`
+- [x] DevOps Agent Operator 소스 코드 확보
+  - 소스 위치: `aws-samples/kr-tech-blog-sample-code`의 `containers/devops-agent-operator/` (전용 레포 아님, docs/01 참고자료 정정 완료)
+  - sparse-checkout으로 해당 디렉터리만 받아 별도 레포 `poc-eks-incident-operator`로 분리 (app과 동일 원리, docs/04 §9 / docs/05)
+- [x] Dockerfile 빌드 → ECR (`poc-eks-incident-operator`) 푸시
+  - 로컬 arm64 빌드 불가(§docs04) → GitHub Actions CI(amd64)로 빌드, OIDC AssumeRole
+  - OIDC 신뢰정책(`github_repos`)에 operator 레포 추가 → `terraform apply`
+  - 이미지 태그: `latest` + 커밋 SHA
+- [x] K8s RBAC 매니페스트 적용
+  - ClusterRole: pods, pods/log, events, nodes (get/list/watch), pods patch(processed 마킹), batch/jobs, coordination/leases(leader election)
+  - ClusterRoleBinding → SA `devops-agent-operator` (ns `devops-agent-operator-system`)
+- [x] ConfigMap 설정
+  - `EXCLUDE_NAMESPACES=kube-system,kube-public,kube-node-lease`
   - `ENABLE_SSM_COLLECTION=true`
-  - 리전, S3 버킷명
-- [ ] Operator Deployment 배포
-- [ ] Operator Pod 로그로 정상 기동 확인
+  - `AWS_REGION=ap-northeast-2`, `S3_BUCKET=poc-eks-incident-artifacts-084828589246`, `CLOUDWATCH_LOG_GROUP=cw-log-group-devops-agent-operator`
+- [x] Operator Deployment 배포
+  - **Pod Identity 네임스페이스 버그 수정**: `operator-iam` 모듈의 association namespace가 `devops-agent-operator`로 잘못 지정돼 있었음(SA명과 혼동). 표준 매니페스트 네임스페이스 `devops-agent-operator-system`으로 정정 후 apply. 안 고쳤으면 IAM 권한 미주입으로 S3/SSM 수집 전부 실패했을 것.
+  - **Phase 2 더미 webhook**: 코드가 webhook URL/secret을 필수 검증(`config.Validate`)하나, Agent 부재 시점이라 더미값 주입. `pod_controller.go` 확인 결과 webhook 전송은 S3/CloudWatch 저장 이후 실행되며 실패해도 무시되므로 수집 검증에 영향 없음. Phase 3에서 실제 값으로 교체.
+- [x] Operator Pod 로그로 정상 기동 확인
+  - Pod `1/1 Running`, Log/SSM/CloudWatch/S3 client 초기화 성공, leader lease 획득, Pod controller worker 기동 확인
 
 ### 2-2. 시나리오 주입 (각 3회)
 

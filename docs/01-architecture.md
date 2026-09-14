@@ -352,7 +352,7 @@ D안이 크로스 리전 EventBridge로 실제 동작하는지는 Phase 5에서 
 | # | 제약 | 대응 |
 |---|------|------|
 | C1 | DevOps Agent가 서울 리전 미지원 | Agent Space는 도쿄(`ap-northeast-1`)에 구성. 서울 EKS를 크로스 리전으로 조사 (§3.1) |
-| C2 | Operator 컨테이너 이미지 미제공 | Dockerfile 빌드 → ECR. Phase 2 첫 작업 |
+| C2 | Operator 컨테이너 이미지 미제공 | ✅ 해결(Phase 2-1). GitHub Actions(amd64)로 Dockerfile 빌드 → ECR `poc-eks-incident-operator` 푸시. 소스는 `kr-tech-blog-sample-code` 모노레포 하위에서 분리 |
 | C3 | Operator가 Pod 리소스만 감시 | 시나리오 7로 한계 실증. Job/Deployment 확장은 포크 필요 |
 | C4 | Crew Slack 게이트웨이가 오너 1명에 잠김 | PoC는 단일 오너로 충분. 팀 운영은 채널 observe + 멘션 |
 | C5 | Crew Strict 샌드박스가 .aws/.ssh/.kube를 숨김 | Auto 모드 사용. Off 금지 |

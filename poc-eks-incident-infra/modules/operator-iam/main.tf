@@ -73,9 +73,11 @@ resource "aws_iam_role_policy_attachment" "operator" {
 }
 
 # Pod Identity Association
+# namespace/service_account는 배포 매니페스트(examples/)와 정확히 일치해야 함.
+# 표준 예제의 네임스페이스는 devops-agent-operator-system 이다.
 resource "aws_eks_pod_identity_association" "operator" {
   cluster_name    = var.cluster_name
-  namespace       = "devops-agent-operator"
+  namespace       = "devops-agent-operator-system"
   service_account = "devops-agent-operator"
   role_arn        = aws_iam_role.operator.arn
 }
