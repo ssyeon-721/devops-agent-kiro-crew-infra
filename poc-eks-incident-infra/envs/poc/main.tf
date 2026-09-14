@@ -73,6 +73,7 @@ module "crew_host" {
   ami_id           = var.crew_ami_id
   instance_type    = var.crew_instance_type
   cluster_name     = module.eks.cluster_name
+  cluster_security_group_id = module.eks.cluster_security_group_id
   artifact_bucket_arn = module.storage.artifact_bucket_arn
   log_group_arn    = module.storage.log_group_arn
 }

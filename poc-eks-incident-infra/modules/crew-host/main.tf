@@ -19,6 +19,18 @@ resource "aws_security_group" "crew" {
   tags = { Name = "${var.project}-crew-sg" }
 }
 
+# Crew EC2 → EKS 클러스터 API(443) 인바운드 허용.
+# 클러스터 SG는 기본적으로 자기 SG 소속만 허용하므로, 다른 SG인 Crew는 명시적으로 열어야 한다.
+resource "aws_security_group_rule" "cluster_api_from_crew" {
+  type                     = "ingress"
+  from_port                = 443
+  to_port                  = 443
+  protocol                 = "tcp"
+  security_group_id        = var.cluster_security_group_id
+  source_security_group_id = aws_security_group.crew.id
+  description              = "Kiro Crew EC2 to EKS API server"
+}
+
 # ── EC2 인스턴스 ──────────────────────────────────────────
 resource "aws_instance" "crew" {
   ami                    = var.ami_id
@@ -50,7 +62,7 @@ resource "aws_instance" "crew" {
   # Phase 1에서는 stopped 상태로 유지
   # aws ec2 stop-instances --instance-ids <id>
 
-  tags = { Name = "${var.project}-crew-host" }
+  tags = { Name = "${var.project}-kiro-crew-host" }
 }
 
 # ── IAM: 인스턴스 프로파일 ────────────────────────────────
@@ -84,14 +96,24 @@ resource "aws_iam_role_policy" "crew_assume_reader" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect   = "Allow"
-      Action   = "sts:AssumeRole"
-      Resource = [
-        aws_iam_role.crew_reader.arn,
-        aws_iam_role.crew_operator.arn,
-      ]
-    }]
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = "sts:AssumeRole"
+        Resource = [
+          aws_iam_role.crew_reader.arn,
+          aws_iam_role.crew_operator.arn,
+        ]
+      },
+      {
+        # kubeconfig 생성 시 클러스터 엔드포인트 조회용(읽기 전용).
+        # 실제 K8s 접근은 reader/operator AssumeRole + EKS access entry로 통제.
+        Sid      = "DescribeClusterForKubeconfig"
+        Effect   = "Allow"
+        Action   = "eks:DescribeCluster"
+        Resource = "arn:aws:eks:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:cluster/${var.cluster_name}"
+      },
+    ]
   })
 }
 
@@ -196,4 +218,45 @@ resource "aws_iam_role_policy" "crew_operator_policy" {
       },
     ]
   })
+}
+
+# ── EKS access entry ──────────────────────────────────────
+# Crew가 kubectl로 클러스터를 조회/조치하려면 access entry가 필요.
+# reader: 클러스터 전체 읽기(View). operator: poc 네임스페이스 한정 편집(Edit).
+resource "aws_eks_access_entry" "crew_reader" {
+  cluster_name  = var.cluster_name
+  principal_arn = aws_iam_role.crew_reader.arn
+  type          = "STANDARD"
+}
+
+resource "aws_eks_access_policy_association" "crew_reader" {
+  cluster_name  = var.cluster_name
+  principal_arn = aws_iam_role.crew_reader.arn
+  policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSViewPolicy"
+
+  access_scope {
+    type = "cluster"
+  }
+
+  depends_on = [aws_eks_access_entry.crew_reader]
+}
+
+# operator: 조치(rollout undo 등)는 poc 네임스페이스로 한정한 Edit 권한
+resource "aws_eks_access_entry" "crew_operator" {
+  cluster_name  = var.cluster_name
+  principal_arn = aws_iam_role.crew_operator.arn
+  type          = "STANDARD"
+}
+
+resource "aws_eks_access_policy_association" "crew_operator" {
+  cluster_name  = var.cluster_name
+  principal_arn = aws_iam_role.crew_operator.arn
+  policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSEditPolicy"
+
+  access_scope {
+    type       = "namespace"
+    namespaces = ["poc"]
+  }
+
+  depends_on = [aws_eks_access_entry.crew_operator]
 }

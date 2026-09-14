@@ -350,8 +350,13 @@
   - unit: `User=kirocrew`(비-root 실행), `ExecStart=/home/kirocrew/.local/bin/kirocrew gateway`, HOME/USER/PATH 환경 지정, `Restart=on-failure`, `WantedBy=multi-user.target`
   - gateway + kiro-cli ACP + OS 샌드박스(rlimit/oom) 정상 기동 확인. dashboard `localhost:5476`(loopback)
 - [ ] Slack 토큰 연결 (`~/.kiro/crew/.env`)
-- [ ] read-only kubeconfig 주입
-- [ ] Slack DM에서 수동 질의로 권한 검증
+- [x] read-only kubeconfig 주입 + EKS 접근 검증
+  - crew-host 모듈: reader 역할 EKS access entry(View, 클러스터 전체) + operator 역할(Edit, `poc` 네임스페이스 한정) 추가
+  - base 역할에 `eks:DescribeCluster` 추가(kubeconfig 생성용, 읽기 전용)
+  - kubectl v1.31 설치, kirocrew 유저 홈에 kubeconfig 생성(reader 역할 AssumeRole, context `crew-reader`)
+  - ⚠️ **네트워크 이슈 해결**: 클러스터 SG가 자기 SG 소속만 443 허용 → Crew(다른 SG)에서 i/o timeout. crew SG→클러스터 SG 443 인바운드 규칙 추가로 해결.
+  - ✅ 검증: Crew에서 `kubectl get pods -n poc` 정상 조회 확인
+- [ ] Slack 연결 (`~/.kiro/crew/.env`) + DM 수동 질의로 권한 검증 (다음)
 
 ### 5-2. H5 연결 방식 실측 (§6.1 — D안 EventBridge 확정)
 
