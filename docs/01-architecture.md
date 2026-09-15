@@ -1,9 +1,10 @@
 # EKS 인시던트 대응 자동화 검증 PoC
 
-- 문서 버전: v2.0
+- 문서 버전: v2.1
 - 작성일: 2026-09-13
+- 최종 업데이트: 2026-09-15
 - 성격: 기술 검증 (운영 개선 프로젝트 아님)
-- 상태: 착수 전
+- 상태: Phase 5 진행 중 (H1·H2 실증 완료, H3 부분 진행, H5 구축 중)
 
 ---
 
@@ -67,13 +68,13 @@ CloudWatch 알람 → SNS → Lambda → Crew 직접 트리아지
 
 ### 1.2 검증 가설
 
-| # | 가설 | 검증 Phase |
-|---|------|-----------|
-| H1 | Operator는 Pod 장애를 놓치지 않고 감지한다 | Phase 2 |
-| H2 | 수집된 컨텍스트는 원인 분석에 충분하다 | Phase 2 |
-| H3 | DevOps Agent는 증상이 같고 원인이 다른 장애를 구분한다 | Phase 3 ★ |
-| H4 | Runbook 최적화로 적중률을 유의미하게 올릴 수 있다 | Phase 4 |
-| H5 | DevOps Agent → Crew 연결이 안정적으로 구성 가능하다 | Phase 5 |
+| # | 가설 | 검증 Phase | 상태 |
+|---|------|-----------|------|
+| H1 | Operator는 Pod 장애를 놓치지 않고 감지한다 | Phase 2 | ✅ 실증 완료 (12/12 감지) |
+| H2 | 수집된 컨텍스트는 원인 분석에 충분하다 | Phase 2 | ✅ 실증 완료 (아티팩트 완전 수집) |
+| H3 | DevOps Agent는 증상이 같고 원인이 다른 장애를 구분한다 | Phase 3 ★ | 🔄 진행 중 (S1 1회차 정답 확인) |
+| H4 | Runbook 최적화로 적중률을 유의미하게 올릴 수 있다 | Phase 4 | ⬜ 미착수 |
+| H5 | DevOps Agent → Crew 연결이 안정적으로 구성 가능하다 | Phase 5 | 🔄 Crew 구축 중 (EKS 접근 검증 완료) |
 
 **H3가 중심이다.** 여기서 실패하면 아키텍처 전체의 가치가 사라진다.
 
@@ -285,15 +286,15 @@ notes: |
 
 ## 5. 진행 계획
 
-| Phase | 내용 | 검증 가설 |
-|-------|------|----------|
-| 1 | 검증 환경 + 테스트 워크로드 구축 | |
-| 2 | Operator 배포 → 시나리오 1~4 주입 | H1, H2 |
-| 3 | DevOps Agent 연동 → 시나리오 1~6 주입 | H3 ★ 중단 판정 |
-| 4 | Runbook 최적화 → 시나리오 1~6 재주입 | H4 |
-| 5 | Kiro Crew 조치 레이어 (Tier 2만) | H5 |
-| 6 | 보조 경로 구성 → 시나리오 7 주입 | |
-| 7 | 결과 정리 및 리포트 작성 | |
+| Phase | 내용 | 검증 가설 | 상태 |
+|-------|------|----------|------|
+| 1 | 검증 환경 + 테스트 워크로드 구축 | | ✅ 완료 |
+| 2 | Operator 배포 → 시나리오 1~4 주입 | H1, H2 | ✅ 완료 (감지율 100%, 수집 완전성 100%) |
+| 3 | DevOps Agent 연동 → 시나리오 1~6 주입 | H3 ★ 중단 판정 | 🔄 진행 중 (S1 1회차 정답, 나머지 시나리오 대기) |
+| 4 | Runbook 최적화 → 시나리오 1~6 재주입 | H4 | ⬜ 미착수 |
+| 5 | Kiro Crew 조치 레이어 (Tier 2만) | H5 | 🔄 진행 중 (Crew 설치·EKS 접근 완료, Slack·H5 실측 대기) |
+| 6 | 보조 경로 구성 → 시나리오 7 주입 | | ⬜ 미착수 |
+| 7 | 결과 정리 및 리포트 작성 | | ⬜ 미착수 |
 
 ---
 
@@ -355,7 +356,7 @@ D안이 크로스 리전 EventBridge로 실제 동작하는지는 Phase 5에서 
 | # | 제약 | 대응 |
 |---|------|------|
 | C1 | DevOps Agent가 서울 리전 미지원 | Agent Space는 도쿄(`ap-northeast-1`)에 구성. 서울 EKS를 크로스 리전으로 조사 (§3.1) |
-| C2 | Operator 컨테이너 이미지 미제공 | ✅ 해결(Phase 2-1). GitHub Actions(amd64)로 Dockerfile 빌드 → ECR `poc-eks-incident-operator` 푸시. 소스는 `kr-tech-blog-sample-code` 모노레포 하위에서 분리 |
+| C2 | Operator 컨테이너 이미지 미제공 | ✅ 해결(Phase 2-1). GitHub Actions(amd64)로 Dockerfile 빌드 → ECR `poc-eks-incident-operator` 푸시. 소스는 `kr-tech-blog-sample-code` 모노레포 하위에서 분리. **C5 추가 발견**: Kiro Crew `kirocrew service install`이 root 실행 거부(보안 정책) → 전용 `kirocrew` 유저 생성 후 비-root로 실행(Phase 5-1 해결) |
 | C3 | Operator가 Pod 리소스만 감시 | 시나리오 7로 한계 실증. Job/Deployment 확장은 포크 필요 |
 | C4 | Crew Slack 게이트웨이가 오너 1명에 잠김 | PoC는 단일 오너로 충분. 팀 운영은 채널 observe + 멘션 |
 | C5 | Crew Strict 샌드박스가 .aws/.ssh/.kube를 숨김 | Auto 모드 사용. Off 금지 |
@@ -367,11 +368,12 @@ D안이 크로스 리전 EventBridge로 실제 동작하는지는 Phase 5에서 
 | # | 리스크 | 영향 | 완화 |
 |---|--------|------|------|
 | R1 | 주입한 장애가 실제 장애와 성격이 달라 결과가 과대평가됨 | 높음 | 시나리오 2·6·7 같은 비전형 케이스 포함. 결과에 "합성 장애 기반" 한계 명시 |
-| R2 | Agent가 정답을 추론이 아니라 확률로 찍음 | 중간 | evidence_correct를 별도 채점. 3회 반복으로 일관성 확인 |
+| R2 | Agent가 정답을 추론이 아니라 확률로 찍음 | 중간 | evidence_correct를 별도 채점. 3회 반복으로 일관성 확인. S1-1회차에서 원인 커밋 SHA·dmesg 해석 정확히 제시 → 추론 근거 확인됨 |
 | R3 | GA 이후 사양·기능 업데이트로 동작이 달라짐 | 낮음 | 각 Phase 결과에 실행 일자 기록 |
 | R4 | 검증 환경 비용 누적 | 낮음 | 야간 노드그룹 스케일다운, Crew EC2 스케줄 정지 |
 | R5 | Operator 자체 장애로 감지 누락 | 중간 | Operator Pod 헬스 확인을 주입 전 체크리스트에 포함 |
 | R6 | 토큰/크레딧 소모 | 중간 | 주입 21회 + 재주입 18회 기준 사전 산정. 보조 경로 중복 억제 |
+| R7 | Crew EC2에서 `kiro-cli login` 브라우저 인터랙티브 필요 | 중간 | `kiro-cli login --use-device-flow`로 device 코드 발급 → 브라우저에서 수동 인증. SSM 자동화 불가하나 1회성 수동 작업으로 해소 |
 
 ---
 

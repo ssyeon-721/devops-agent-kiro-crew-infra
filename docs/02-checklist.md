@@ -328,7 +328,7 @@
   - 상주화: `kirocrew service install`(systemd) → `kirocrew doctor`
   - ⚠️ **추가 의존성/제약**: 내부적으로 `kiro-cli`로 모델 접근하며 **Kiro 계정 device-code 로그인 필요**(브라우저 인터랙티브 → SSM 자동화 불가, 사용자 수동 단계). 대시보드는 `localhost:5476`(loopback), Slack 등 메시징은 outbound 연결이라 포트 노출 불필요.
   - ⚠️ 네트워크: Crew EC2는 프라이빗 서브넷 + NAT 아웃바운드(egress all)라 CDN 다운로드 가능 예상 → 설치 시 확인.
-- ⚠️ **불확실성 2 — 조치용 EKS 접근**: operator 역할이 실제로 K8s 리소스를 바꾸려면 EKS access entry(네임스페이스 한정, edit 권한)가 필요. 현재 operator 역할은 `eks:DescribeCluster`만 있고 K8s RBAC 매핑 없음 → [5] 전에 추가 필요.
+- ✅ **불확실성 2 해결 — 조치용 EKS 접근**: `kirocrew-triage-operator` 역할에 EKS access entry(Edit, `poc` 네임스페이스 한정) 추가 완료. `crew-base-role`에 `eks:DescribeCluster` 부여. 5-1에서 kubeconfig/접근 검증까지 완료.
 - ⚠️ **불확실성 3 — H5 실측**: EventBridge `Investigation Completed` 이벤트의 실제 페이로드/발생 여부는 미실측(설계만 확정). [4]에서 실측.
 
 ### 5-1. Crew 설치
