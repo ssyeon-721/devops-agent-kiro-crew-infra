@@ -113,6 +113,13 @@ resource "aws_iam_role_policy" "crew_assume_reader" {
         Action   = "eks:DescribeCluster"
         Resource = "arn:aws:eks:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:cluster/${var.cluster_name}"
       },
+      {
+        # Slack 토큰 등 Crew 운영 시크릿 조회 (kiro-crew/ 경로 한정)
+        Sid    = "CrewSecretsRead"
+        Effect = "Allow"
+        Action = "secretsmanager:GetSecretValue"
+        Resource = "arn:aws:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:kiro-crew/*"
+      },
     ]
   })
 }

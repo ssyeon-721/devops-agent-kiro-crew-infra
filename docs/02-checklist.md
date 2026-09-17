@@ -349,7 +349,26 @@
   - ⚠️ **`kirocrew service install`이 sudo 비밀번호 요구** → 보안 판단: 서비스 계정에 NOPASSWD sudo 상시 부여(A)는 "untrusted tool 실행 계정의 권한 상승 경로"라 거부. 대신 **root로 unit 파일만 일회성 생성(B)** 채택 → `kirocrew` 유저는 sudo 없는 순수 일반 유저로 유지.
   - unit: `User=kirocrew`(비-root 실행), `ExecStart=/home/kirocrew/.local/bin/kirocrew gateway`, HOME/USER/PATH 환경 지정, `Restart=on-failure`, `WantedBy=multi-user.target`
   - gateway + kiro-cli ACP + OS 샌드박스(rlimit/oom) 정상 기동 확인. dashboard `localhost:5476`(loopback)
-- [ ] Slack 토큰 연결 (`~/.kiro/crew/.env`)
+- [x] Slack 토큰 연결 (`~/.kiro/crew/.env`)
+  - Secrets Manager `kiro-crew/slack-tokens`에서 SSM 경유로 주입 완료
+  - `crew-base-role`에 `secretsmanager:GetSecretValue` 권한 추가 (kiro-crew/* 경로 한정)
+  - `/home/kirocrew/.kiro/crew/.env` 최종 구성 (소유자 `kirocrew`, 권한 `600`):
+    ```
+    SLACK_BOT_TOKEN=xoxb-...
+    SLACK_APP_TOKEN=xapp-...
+    KIROCREW_OWNER_ID=U0BNZ6ZE8V7
+    ```
+  - `kirocrew setup --slack` 실행 완료 (workspace 경로, slash command `/kirocrew`, timezone `Asia/Seoul` 설정)
+  - Slack 앱 설정 완료:
+    - **Socket Mode**: 활성화
+    - **Event Subscriptions**: 활성화 (Socket Mode 사용으로 Request URL 불필요)
+    - **Subscribe to bot events**: `app_mention`, `app_home_opened`, `file_change`, `member_joined_channel`, `message.channels`, `message.groups`, `message.im`
+    - **Bot Token Scopes**: `app_mentions:read`, `channels:history`, `channels:read`, `chat:write`, `commands`, `files:read`, `files:write`, `groups:history`, `groups:read`, `im:history`, `im:read`, `im:write`, `reactions:write`, `users:read`
+    - **Interactivity**: 활성화 (승인 버튼용)
+    - Reinstall to Workspace 완료
+  - ✅ Slack 연결 동작 확인 — 봇이 멘션에 응답함
+  - ⚠️ **Kiro 계정 크레딧 초과**: `kirocrew` 유저가 회사 계정(`ssyeon@megazone.com`, IAM Identity Center)으로 로그인돼 있어 월간 한도 초과. **개인 계정으로 재로그인 필요**
+    - `sudo -u kirocrew -H bash -l` → `kiro-cli logout` → `kiro-cli login --use-device-flow`
 - [x] read-only kubeconfig 주입 + EKS 접근 검증
   - crew-host 모듈: reader 역할 EKS access entry(View, 클러스터 전체) + operator 역할(Edit, `poc` 네임스페이스 한정) 추가
   - base 역할에 `eks:DescribeCluster` 추가(kubeconfig 생성용, 읽기 전용)
