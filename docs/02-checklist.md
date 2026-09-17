@@ -366,16 +366,16 @@
     - **Bot Token Scopes**: `app_mentions:read`, `channels:history`, `channels:read`, `chat:write`, `commands`, `files:read`, `files:write`, `groups:history`, `groups:read`, `im:history`, `im:read`, `im:write`, `reactions:write`, `users:read`
     - **Interactivity**: 활성화 (승인 버튼용)
     - Reinstall to Workspace 완료
-  - ✅ Slack 연결 동작 확인 — 봇이 멘션에 응답함
-  - ⚠️ **Kiro 계정 크레딧 초과**: `kirocrew` 유저가 회사 계정(`ssyeon@megazone.com`, IAM Identity Center)으로 로그인돼 있어 월간 한도 초과. **개인 계정으로 재로그인 필요**
+  - ⚠️ **Kiro 계정 크레딧 초과 → 해결**: 초기 로그인이 회사 계정(`ssyeon@megazone.com`, IAM Identity Center)으로 돼 있어 월간 한도 초과 발생. 개인 계정(`lsyeon721@gmail.com`, Google)으로 재로그인하여 해결.
     - `sudo -u kirocrew -H bash -l` → `kiro-cli logout` → `kiro-cli login --use-device-flow`
+  - ✅ **Slack 연결 최종 확인 완료** — `@kiro-crew-bot 안녕` 멘션에 "안녕하세요! 무엇을 도와드릴까요?" 응답 확인 (2026-09-17)
 - [x] read-only kubeconfig 주입 + EKS 접근 검증
   - crew-host 모듈: reader 역할 EKS access entry(View, 클러스터 전체) + operator 역할(Edit, `poc` 네임스페이스 한정) 추가
   - base 역할에 `eks:DescribeCluster` 추가(kubeconfig 생성용, 읽기 전용)
   - kubectl v1.31 설치, kirocrew 유저 홈에 kubeconfig 생성(reader 역할 AssumeRole, context `crew-reader`)
   - ⚠️ **네트워크 이슈 해결**: 클러스터 SG가 자기 SG 소속만 443 허용 → Crew(다른 SG)에서 i/o timeout. crew SG→클러스터 SG 443 인바운드 규칙 추가로 해결.
   - ✅ 검증: Crew에서 `kubectl get pods -n poc` 정상 조회 확인
-- [ ] Slack 연결 (`~/.kiro/crew/.env`) + DM 수동 질의로 권한 검증 (다음)
+- [x] Slack 연결 (`~/.kiro/crew/.env`) + DM 수동 질의로 권한 검증 ✅ 완료 (2026-09-17)
 
 ### 5-2. H5 연결 방식 실측 (§6.1 — D안 EventBridge 확정)
 
