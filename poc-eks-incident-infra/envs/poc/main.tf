@@ -20,6 +20,20 @@ provider "aws" {
   }
 }
 
+# 도쿄 리전 — DevOps Agent EventBridge 규칙용
+provider "aws" {
+  alias  = "tokyo"
+  region = "ap-northeast-1"
+
+  default_tags {
+    tags = {
+      Project     = var.project
+      ManagedBy   = "terraform"
+      Environment = "poc"
+    }
+  }
+}
+
 module "network" {
   source  = "../../modules/network"
   project = var.project
@@ -88,3 +102,18 @@ module "github_oidc" {
 
 # alt_path 모듈은 Phase 6에서 apply
 # module "alt_path" { ... }
+
+# ── Phase 5-2: H5 Bridge (DevOps Agent → Kiro Crew) ──────────────────────────
+module "h5_bridge" {
+  source = "../../modules/h5-bridge"
+
+  providers = {
+    aws       = aws
+    aws.tokyo = aws.tokyo
+  }
+
+  project          = var.project
+  agent_space_id   = var.agent_space_id
+  crew_instance_id = var.crew_instance_id
+  slack_channel_id = var.slack_channel_id
+}

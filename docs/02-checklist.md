@@ -379,10 +379,20 @@
 
 ### 5-2. H5 연결 방식 실측 (§6.1 — D안 EventBridge 확정)
 
-- [ ] D안 실측: 도쿄 Agent `Investigation Completed` 이벤트 → EventBridge 규칙 매칭
-  - 이벤트 패턴: `source: aws.aidevops`, `detail-type: Investigation Completed`, agent_space_id 필터
-- [ ] EventBridge 규칙 → SNS/Lambda → 서울 Crew 트리거 왕복 확인
-- [ ] 불가 시 폴백 B안: Slack 채널 observe 모드 + 파싱
+- [x] D안 실측: 도쿄 Agent `Investigation Completed` 이벤트 → EventBridge 규칙 매칭
+  - 이벤트 패턴: `source: aws.aidevops`, `detail-type: Investigation Completed/Failed`, agent_space_id 필터
+  - Agent Space ID: `0786d7f0-108f-48a6-8c42-b84c5d93cf3b` (도쿄 `poc-eks-incident-agent`)
+- [x] `modules/h5-bridge` Terraform 모듈 구성 및 apply (리소스 10개)
+  - [도쿄] EventBridge 규칙 `poc-eks-incident-investigation-completed`
+  - [서울] SNS 토픽 `poc-eks-incident-h5-bridge`
+  - [서울] Lambda `poc-eks-incident-h5-bridge` — SNS 수신 → Slack Bot API 직접 호출
+  - Lambda가 Secrets Manager `kiro-crew/slack-tokens`에서 Bot Token 조회 후 `chat.postMessage`
+  - Slack 채널: `#devops-agent-kiro-crew` (`C0C1EDPAEMR`)
+- [x] **SNS → Lambda → Slack 왕복 확인** (test-h5-002, 2026-09-18)
+  - `kiro-crew-bot`이 `#devops-agent-kiro-crew`에 조사 완료 메시지 수신 확인 ✅
+  - ⚠️ **설계 변경**: 당초 `kirocrew chat` SSM 방식 → Lambda가 Slack API 직접 호출로 변경
+    - 이유: `kirocrew chat`은 터미널 출력만 반환, Slack 발송 안 함
+- [ ] 실제 DevOps Agent 조사 완료 이벤트로 왕복 확인 (Phase 3 시나리오 주입 시)
 
 ### 5-3. Tier 2 승인 플로우 구현
 

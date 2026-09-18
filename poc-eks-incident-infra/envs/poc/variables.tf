@@ -78,3 +78,22 @@ variable "devops_agent_role_name" {
   type        = string
   default     = ""
 }
+
+# H5 Bridge
+variable "agent_space_id" {
+  description = "도쿄 DevOps Agent Space ID (EventBridge 필터용)"
+  type        = string
+  default     = ""
+}
+
+variable "crew_instance_id" {
+  description = "Crew EC2 인스턴스 ID (H5 Bridge SSM 대상)"
+  type        = string
+  default     = ""
+}
+
+variable "slack_channel_id" {
+  description = "DevOps Agent 조사 결과를 수신할 Slack 채널 ID"
+  type        = string
+  default     = ""
+}

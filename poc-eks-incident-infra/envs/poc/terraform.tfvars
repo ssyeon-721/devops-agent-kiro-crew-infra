@@ -28,3 +28,11 @@ github_repos = [
 # 주의: Agent Space를 재생성하면 역할 접미사가 바뀌므로 값 갱신 필요
 devops_agent_role_arn  = "arn:aws:iam::084828589246:role/service-role/DevOpsAgentRole-AgentSpace-6j8n9zaq"
 devops_agent_role_name = "DevOpsAgentRole-AgentSpace-6j8n9zaq"
+
+# H5 Bridge — Phase 5-2
+# DevOps Agent Space ID (도쿄, poc-eks-incident-agent)
+agent_space_id   = "0786d7f0-108f-48a6-8c42-b84c5d93cf3b"
+# Crew EC2 인스턴스 ID
+crew_instance_id = "i-03d7e0868fb975158"
+# DevOps Agent 조사 결과 수신 Slack 채널
+slack_channel_id = "C0C1EDPAEMR"
