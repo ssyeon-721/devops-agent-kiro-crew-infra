@@ -411,8 +411,16 @@
 - [x] `rollout undo` 실행 → **직접 실행 검증 완료** (2026-09-18)
   - `kubectl --context crew-operator rollout undo deployment/web-poc -n poc` → `rolled back`
   - `rollout status` → `successfully rolled out` (2/2 replicas)
-- [ ] Crew에게 Slack/DM "rollback" 요청 → 스킬 자동 실행 왕복 검증 (다음)
-- [ ] 시나리오 1, 2로 왕복 검증
+- [x] **Crew에게 Slack "rollback" 요청 → 스킬 자동 실행 왕복 검증 완료** (2026-09-18)
+  - Slack 멘션: `@kiro-crew-bot web-poc 조사 끝났어. poc 네임스페이스에서 롤백해줘`
+  - Crew가 `eks-rollback` 스킬을 정확히 인식·적용:
+    1. 스킬 자동 선택 ("dedicated eks-rollback skill for exactly this")
+    2. operator 역할 AssumeRole + context 전환
+    3. 이전 revision 확인 (39 → 38)
+    4. `rollout undo` 실행 → Pod 2/2 Running
+    5. 크레덴셜 미캐시 + rollout status 확인까지 스킬 절차 준수
+  - ✅ Slack 진단 → 조치(롤백)까지 end-to-end 세로 축 관통 완료 (Phase 5 진행 방침 목표 달성)
+- [ ] 시나리오 1, 2로 왕복 검증 (Phase 3 시나리오 주입 시 통합 확인)
 
 ### 5-4. 포스트모템 초안 생성
 
@@ -421,10 +429,16 @@
 
 ### 5-5. Phase 5 종료 조건
 
-- [ ] H5 연결 안정성 확인
-- [ ] 승인 → 조치 → 회신 왕복 성공
+- [x] H5 연결 안정성 확인 — EventBridge(도쿄) → SNS → Lambda → Slack 왕복 성공 (5-2)
+- [x] 승인 → 조치 → 회신 왕복 성공 — Slack "롤백" 요청 → Crew 스킬 → rollout undo → Slack 회신 (5-3)
 
-**중단 기준**: H5 A/B/C 모든 연결 방식 실패
+**중단 기준**: H5 A/B/C 모든 연결 방식 실패 → 해당 없음 (D안 EventBridge로 성공)
+
+**Phase 5 요약 (진단→조치 세로 축 관통)**
+- Slack 연동 완료 (개인 계정, Bot/App Token, Socket Mode)
+- H5 Bridge: 도쿄 Agent 이벤트 → 서울 SNS/Lambda → Slack 알림 (`modules/h5-bridge`)
+- Tier 2 조치: Crew `eks-rollback` 스킬 → operator 역할(poc 한정, 15분) → rollout undo
+- 남은 것: Phase 3 시나리오 주입과 통합한 전체 왕복(진단→조치) 반복 검증
 
 ---
 
