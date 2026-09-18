@@ -83,29 +83,20 @@ resource "aws_iam_role_policy" "h5_lambda_permissions" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "SSMSendToCrewEC2"
+        # 조사 요약 저널 레코드 조회 (도쿄 aidevops)
+        Sid    = "DevOpsAgentJournalRead"
         Effect = "Allow"
         Action = [
-          "ssm:SendCommand",
-          "ssm:GetCommandInvocation",
+          "aidevops:ListJournalRecords",
         ]
-        Resource = [
-          "arn:aws:ec2:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:instance/${var.crew_instance_id}",
-          "arn:aws:ssm:${data.aws_region.current.name}::document/AWS-RunShellScript",
-        ]
+        Resource = "*"
       },
       {
+        # Slack Bot Token 조회
         Sid    = "SlackTokenRead"
         Effect = "Allow"
         Action = "secretsmanager:GetSecretValue"
         Resource = "arn:aws:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:kiro-crew/*"
-      },
-      {
-        # Crew operator 역할 AssumeRole (rollout undo용, 세션 15분)
-        Sid    = "AssumeCrewOperator"
-        Effect = "Allow"
-        Action = "sts:AssumeRole"
-        Resource = var.crew_operator_role_arn
       }
     ]
   })
@@ -128,23 +119,60 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 REGION        = os.environ['AWS_REGION_NAME']
+AGENT_REGION  = os.environ['AGENT_REGION']   # 도쿄
 SLACK_SECRET  = os.environ['SLACK_SECRET_ID']
 SLACK_CHANNEL = os.environ['SLACK_CHANNEL_ID']
+
+aidevops = boto3.client('devops-agent', region_name=AGENT_REGION)
 
 def get_bot_token():
     client = boto3.client('secretsmanager', region_name=REGION)
     resp = client.get_secret_value(SecretId=SLACK_SECRET)
     return json.loads(resp['SecretString'])['SLACK_BOT_TOKEN']
 
-def post_to_slack(token, payload):
-    data = json.dumps(payload).encode('utf-8')
+def fetch_summary(agent_space_id, execution_id):
+    """ListJournalRecords로 investigation_summary_md content 조회"""
+    try:
+        resp = aidevops.list_journal_records(
+            agentSpaceId=agent_space_id,
+            executionId=execution_id,
+        )
+    except Exception as e:
+        logger.error("list_journal_records EXCEPTION: %s", e)
+        return None
+    records = resp.get('records', resp.get('journalRecords', []))
+    logger.info("records count=%d, resp keys=%s", len(records), list(resp.keys()))
+    for rec in records:
+        # boto3 필드명이 recordType 또는 record_type일 수 있어 둘 다 확인
+        rtype = rec.get('recordType') or rec.get('record_type', '')
+        if rtype == 'investigation_summary_md':
+            return rec.get('content', '')
+    return None
+
+def parse_summary(md):
+    """investigation_summary_md에서 핵심 필드 추출 (Symptoms/Findings/Root Cause)"""
+    if not md:
+        return {}
+    out = {}
+    # 간단한 마크다운 헤더 기반 추출
+    lines = md.split('\n')
+    section = None
+    buf = {}
+    for ln in lines:
+        s = ln.strip()
+        if s.startswith('### Cause:') or s.startswith('### Root Cause:'):
+            key = 'root_cause' if 'Root Cause' in s else 'cause'
+            buf.setdefault(key, s.split(':', 1)[1].strip())
+        elif s.startswith('### ') and 'stuck' in s.lower() or s.startswith('### web') :
+            buf.setdefault('symptom', s.lstrip('# ').strip())
+    return buf
+
+def post_to_slack(token, text):
+    payload = json.dumps({"channel": SLACK_CHANNEL, "text": text, "unfurl_links": False}).encode('utf-8')
     req = urllib.request.Request(
         'https://slack.com/api/chat.postMessage',
-        data=data,
-        headers={
-            'Content-Type': 'application/json; charset=utf-8',
-            'Authorization': f'Bearer {token}',
-        },
+        data=payload,
+        headers={'Content-Type': 'application/json; charset=utf-8', 'Authorization': f'Bearer {token}'},
         method='POST',
     )
     with urllib.request.urlopen(req, timeout=10) as resp:
@@ -158,90 +186,55 @@ def lambda_handler(event, context):
     token = get_bot_token()
 
     for record in event.get('Records', []):
-        message_str = record['Sns']['Message']
         try:
-            message = json.loads(message_str)
+            message = json.loads(record['Sns']['Message'])
         except Exception:
-            message = {"raw": message_str}
+            logger.error("Failed to parse SNS message")
+            continue
 
-        detail_type      = message.get('detail-type', 'Unknown')
-        detail           = message.get('detail', {})
-        investigation_id = detail.get('metadata', {}).get('investigation_id', 'N/A')
-        status           = detail.get('status', '')
-        findings_summary = detail.get('findings', {}).get('summary', '')
-        # 조치 정보 (DevOps Agent가 제안하는 remediation)
-        remediation      = detail.get('findings', {}).get('remediation', '')
-        namespace        = detail.get('metadata', {}).get('namespace', 'poc')
-        deployment       = detail.get('metadata', {}).get('deployment_name', '')
+        detail_type = message.get('detail-type', 'Unknown')
+        detail      = message.get('detail', {})
+        metadata    = detail.get('metadata', {})
+        data        = detail.get('data', {})
+
+        agent_space_id = metadata.get('agent_space_id', '')
+        execution_id   = metadata.get('execution_id', '')
+        task_id        = metadata.get('task_id', '')
+        status         = data.get('status', '')
+        priority       = data.get('priority', '')
 
         if detail_type == 'Investigation Completed':
-            # Block Kit: 텍스트 + 승인 버튼
-            action_value = json.dumps({
-                "investigation_id": investigation_id,
-                "namespace": namespace,
-                "deployment": deployment,
-                "channel": SLACK_CHANNEL,
-            })
-            blocks = [
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": (
-                            f":white_check_mark: *DevOps Agent 조사 완료*\n"
-                            f">*Investigation ID:* `{investigation_id}`\n"
-                            f">*Status:* {status}\n"
-                            f">*Summary:* {findings_summary}"
-                            + (f"\n>*Remediation:* {remediation}" if remediation else "")
-                        )
-                    }
-                },
-            ]
-            # deployment 정보가 있을 때만 승인 버튼 추가
-            if deployment:
-                blocks.append({
-                    "type": "actions",
-                    "elements": [
-                        {
-                            "type": "button",
-                            "text": {"type": "plain_text", "text": f"✅ rollout undo ({deployment})"},
-                            "style": "primary",
-                            "action_id": "approve_rollback",
-                            "value": action_value,
-                            "confirm": {
-                                "title": {"type": "plain_text", "text": "롤백 실행 확인"},
-                                "text": {"type": "mrkdwn", "text": f"`kubectl rollout undo deployment/{deployment} -n {namespace}` 를 실행합니다."},
-                                "confirm": {"type": "plain_text", "text": "실행"},
-                                "deny": {"type": "plain_text", "text": "취소"},
-                            }
-                        },
-                        {
-                            "type": "button",
-                            "text": {"type": "plain_text", "text": "❌ 무시"},
-                            "action_id": "dismiss_action",
-                            "value": investigation_id,
-                        }
-                    ]
-                })
-            payload = {"channel": SLACK_CHANNEL, "blocks": blocks, "text": f"DevOps Agent 조사 완료: {investigation_id}"}
+            summary_md = fetch_summary(agent_space_id, execution_id)
+            if summary_md:
+                # 요약 마크다운을 그대로 싣되 Slack 길이 제한 고려(3000자)
+                body = summary_md.strip()
+                if len(body) > 2500:
+                    body = body[:2500] + "\n... (요약 일부 생략)"
+                text = (
+                    f":white_check_mark: *DevOps Agent 조사 완료* (priority: {priority})\n"
+                    f"```{body}```\n"
+                    f":point_right: 조치가 필요하면 봇에게 멘션으로 "
+                    f"`@kiro-crew-bot web-poc 롤백해줘` 라고 요청하세요. "
+                    f"승인 즉시 Crew가 `rollout undo`를 실행합니다."
+                )
+            else:
+                text = (
+                    f":white_check_mark: *DevOps Agent 조사 완료* (priority: {priority})\n"
+                    f">조사 요약을 가져오지 못했습니다. task_id=`{task_id}`, execution_id=`{execution_id}`\n"
+                    f">도쿄 콘솔에서 직접 확인하세요."
+                )
+            post_to_slack(token, text)
+            logger.info("Posted summary to Slack for exec=%s", execution_id)
 
         elif detail_type == 'Investigation Failed':
-            payload = {
-                "channel": SLACK_CHANNEL,
-                "text": (
-                    f":x: *DevOps Agent 조사 실패*\n"
-                    f">*Investigation ID:* `{investigation_id}`\n"
-                    f">상세: {json.dumps(detail, ensure_ascii=False)[:400]}"
-                )
-            }
+            text = (
+                f":x: *DevOps Agent 조사 실패* (status: {status})\n"
+                f">task_id=`{task_id}` — 수동 확인이 필요합니다."
+            )
+            post_to_slack(token, text)
+            logger.info("Posted failure to Slack task=%s", task_id)
         else:
-            payload = {
-                "channel": SLACK_CHANNEL,
-                "text": f":bell: *DevOps Agent 이벤트:* {detail_type}\n>{json.dumps(detail, ensure_ascii=False)[:400]}"
-            }
-
-        result = post_to_slack(token, payload)
-        logger.info("Slack post result ts=%s", result.get('ts'))
+            logger.info("Ignoring detail-type: %s", detail_type)
 
     return {"statusCode": 200}
 PYTHON
@@ -261,6 +254,7 @@ resource "aws_lambda_function" "h5_notifier" {
   environment {
     variables = {
       AWS_REGION_NAME  = data.aws_region.current.name
+      AGENT_REGION     = "ap-northeast-1"
       SLACK_SECRET_ID  = var.slack_secret_id
       SLACK_CHANNEL_ID = var.slack_channel_id
     }

@@ -120,6 +120,17 @@ resource "aws_iam_role_policy" "crew_assume_reader" {
         Action = "secretsmanager:GetSecretValue"
         Resource = "arn:aws:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:kiro-crew/*"
       },
+      {
+        # DevOps Agent 조사 요약(저널 레코드) 조회 — H5 ③④ 요약용 (도쿄 리전)
+        Sid    = "DevOpsAgentJournalRead"
+        Effect = "Allow"
+        Action = [
+          "aidevops:ListJournalRecords",
+          "aidevops:GetTask",
+          "aidevops:ListTasks",
+        ]
+        Resource = "*"
+      },
     ]
   })
 }

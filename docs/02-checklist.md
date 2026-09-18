@@ -420,7 +420,28 @@
     4. `rollout undo` 실행 → Pod 2/2 Running
     5. 크레덴셜 미캐시 + rollout status 확인까지 스킬 절차 준수
   - ✅ Slack 진단 → 조치(롤백)까지 end-to-end 세로 축 관통 완료 (Phase 5 진행 방침 목표 달성)
-- [ ] 시나리오 1, 2로 왕복 검증 (Phase 3 시나리오 주입 시 통합 확인)
+- [x] **전체 흐름(①~⑥) end-to-end 관통 검증 완료** (2026-09-18, 시나리오 4 ImagePullBackOff)
+  1. 장애 주입 → 2. Operator 감지·수집(webhook 200) → 3. 도쿄 Agent 조사(Investigation Completed)
+  → 4. 크로스리전 EventBridge → SNS → Lambda → 조사 요약 Slack 게시
+  → 5. 사용자 Slack "롤백해줘" → 6. Crew가 operator 역할로 rollout undo → 정상 복구
+  - 실제 클러스터 검증: Pod 2/2 Running, 이미지 `:latest` 복구, ImagePullBackOff Pod 제거 확인
+- [ ] 시나리오 1, 2로 추가 왕복 검증 (Phase 3 시나리오 주입 시)
+
+### 5-2b. H5 Bridge — 조사 요약 전달 (실제 이벤트 구조 반영)
+
+> Phase 5-2 초기 구현은 테스트 메시지로만 검증했고, 실제 Agent 이벤트로 돌려보며 아래를 수정함.
+
+- [x] **크로스리전 EventBridge 버그 수정**: EventBridge는 다른 리전 SNS를 직접 타겟 불가
+  → 도쿄 규칙 → 서울 default 이벤트 버스(네이티브) → 서울 규칙 → SNS 2단 구성
+- [x] **실제 이벤트 payload 구조 반영**: `detail.data.status`, `detail.metadata.execution_id` 등
+  (초기 가정 `detail.status`/`findings.summary`와 달랐음 — 빈 알림 원인)
+- [x] **조사 요약 조회**: 이벤트엔 요약 텍스트가 없고 `summary_record_id` 참조만 있음
+  → Lambda가 `devops-agent ListJournalRecords`로 `investigation_summary_md` 레코드 조회
+  - boto3 서비스명 `devops-agent`(CLI와 동일), 응답 필드명 `records`(CLI의 journalRecords와 다름)
+  - Lambda IAM에 `aidevops:ListJournalRecords` + Slack 토큰 조회 권한 추가
+- [x] Slack에 조사 요약 + 롤백 안내 게시 확인 (방식 B: Lambda가 요약 전달, Crew가 조치)
+- [ ] ⏭ 조사 요약 **한국어 정리**는 후속 (갈래1: Lambda+Bedrock / 갈래2: Crew 요약 — 미결정)
+- [ ] ⏭ 영어 원문 잘림(2500자 제한) 개선도 한국어 요약 시 함께 해결 예정
 
 ### 5-4. 포스트모템 초안 생성
 
