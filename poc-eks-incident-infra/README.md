@@ -80,5 +80,13 @@ terraform apply -var="node_desired_size=2"
 | operator_iam | Operator IAM Policy/Role, Pod Identity Association |
 | storage | 인시던트 S3 버킷, CloudWatch 로그그룹 |
 | registry | ECR (operator, app) |
-| crew_host | Crew EC2, IAM 역할 2개 (reader/operator) |
+| crew_host | Crew EC2(t3a.large), IAM 역할 3개 (base/reader/operator), EKS access entry |
+| h5_bridge | 도쿄 EventBridge → 서울 이벤트버스 → 규칙 → SNS → Lambda (DevOps Agent → Crew 연결) |
 | alt_path | CloudWatch 알람, SNS, Lambda (Phase 6) |
+
+## Crew 설치·설정
+
+Terraform은 Crew EC2와 IAM만 만든다. **Kiro Crew 소프트웨어 설치·설정·검증**은 별도 플레이북 참조:
+
+- **[../docs/06-crew-setup-playbook.md](../docs/06-crew-setup-playbook.md)** — Crew 재구축 전 과정
+  (설치 → kiro-cli 로그인 → Slack 연동 → config → 스킬 배포 → 검증 + 함정 정리)
