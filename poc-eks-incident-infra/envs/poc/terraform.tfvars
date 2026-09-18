@@ -1,6 +1,7 @@
 aws_region         = "ap-northeast-2"
 project            = "poc-eks-incident"
-cluster_version    = "1.31"
+# 실제 클러스터는 1.34로 자동 업그레이드됨 — 드리프트 방지를 위해 코드도 정렬
+cluster_version    = "1.34"
 node_desired_size  = 2
 node_instance_type = "t3.large"
 crew_instance_type = "t3a.medium"

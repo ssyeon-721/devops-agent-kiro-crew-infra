@@ -8,7 +8,7 @@ variable "project" {
 
 # EKS
 variable "cluster_version" {
-  default = "1.31"
+  default = "1.34"
 }
 
 variable "node_desired_size" {

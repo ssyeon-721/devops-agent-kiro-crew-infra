@@ -3,9 +3,9 @@ output "sns_topic_arn" {
   value       = aws_sns_topic.h5_bridge.arn
 }
 
-output "lambda_function_name" {
-  description = "H5 Bridge Lambda 함수 이름"
-  value       = aws_lambda_function.h5_bridge.function_name
+output "notifier_function_name" {
+  description = "H5 Notifier Lambda 함수 이름"
+  value       = aws_lambda_function.h5_notifier.function_name
 }
 
 output "eventbridge_rule_name" {

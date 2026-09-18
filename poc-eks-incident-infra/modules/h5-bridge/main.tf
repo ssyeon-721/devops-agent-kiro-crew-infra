@@ -4,7 +4,9 @@
 # 흐름:
 #   [도쿄] EventBridge 규칙 (aws.aidevops, Investigation Completed/Failed)
 #     → [서울] SNS 토픽
-#     → Lambda (Crew EC2에 SSM SendCommand로 알림 전달)
+#     → h5-notifier Lambda: Slack에 Block Kit 버튼 메시지 발송
+#     → 사용자가 [승인] 클릭
+#     → h5-approver Lambda (Function URL): rollout undo 실행 → Slack 결과 회신
 #
 # 크로스 리전 구성:
 #   - EventBridge 규칙: 도쿄(ap-northeast-1) default 버스
@@ -54,7 +56,7 @@ resource "aws_sns_topic_policy" "h5_bridge" {
   })
 }
 
-# ── Lambda 실행 역할 ─────────────────────────────────────────────────────────
+# ── 공통 IAM 역할 ─────────────────────────────────────────────────────────────
 resource "aws_iam_role" "h5_lambda" {
   name = "${var.project}-h5-lambda-role"
 
@@ -73,8 +75,8 @@ resource "aws_iam_role_policy_attachment" "h5_lambda_basic" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-resource "aws_iam_role_policy" "h5_lambda_ssm" {
-  name = "ssm-send-command"
+resource "aws_iam_role_policy" "h5_lambda_permissions" {
+  name = "h5-lambda-permissions"
   role = aws_iam_role.h5_lambda.id
 
   policy = jsonencode({
@@ -93,23 +95,26 @@ resource "aws_iam_role_policy" "h5_lambda_ssm" {
         ]
       },
       {
-        # Slack Bot Token 조회
         Sid    = "SlackTokenRead"
         Effect = "Allow"
         Action = "secretsmanager:GetSecretValue"
         Resource = "arn:aws:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:kiro-crew/*"
+      },
+      {
+        # Crew operator 역할 AssumeRole (rollout undo용, 세션 15분)
+        Sid    = "AssumeCrewOperator"
+        Effect = "Allow"
+        Action = "sts:AssumeRole"
+        Resource = var.crew_operator_role_arn
       }
     ]
   })
 }
 
-# ── Lambda 함수 ───────────────────────────────────────────────────────────────
-# SNS 메시지(DevOps Agent 조사 결과)를 받아 Crew EC2에 SSM으로 전달
-# Crew는 메시지를 받아 Slack으로 알림
-
-data "archive_file" "h5_lambda" {
+# ── h5-notifier Lambda: SNS → Slack Block Kit 버튼 메시지 ────────────────────
+data "archive_file" "h5_notifier" {
   type        = "zip"
-  output_path = "${path.module}/lambda.zip"
+  output_path = "${path.module}/notifier.zip"
 
   source {
     content  = <<-PYTHON
@@ -118,7 +123,6 @@ import boto3
 import os
 import logging
 import urllib.request
-import urllib.parse
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -130,18 +134,13 @@ SLACK_CHANNEL = os.environ['SLACK_CHANNEL_ID']
 def get_bot_token():
     client = boto3.client('secretsmanager', region_name=REGION)
     resp = client.get_secret_value(SecretId=SLACK_SECRET)
-    secret = json.loads(resp['SecretString'])
-    return secret['SLACK_BOT_TOKEN']
+    return json.loads(resp['SecretString'])['SLACK_BOT_TOKEN']
 
-def post_to_slack(token, channel, text):
-    payload = json.dumps({
-        "channel": channel,
-        "text": text,
-        "unfurl_links": False,
-    }).encode('utf-8')
+def post_to_slack(token, payload):
+    data = json.dumps(payload).encode('utf-8')
     req = urllib.request.Request(
         'https://slack.com/api/chat.postMessage',
-        data=payload,
+        data=data,
         headers={
             'Content-Type': 'application/json; charset=utf-8',
             'Authorization': f'Bearer {token}',
@@ -156,7 +155,6 @@ def post_to_slack(token, channel, text):
 
 def lambda_handler(event, context):
     logger.info("Received event: %s", json.dumps(event))
-
     token = get_bot_token()
 
     for record in event.get('Records', []):
@@ -171,25 +169,79 @@ def lambda_handler(event, context):
         investigation_id = detail.get('metadata', {}).get('investigation_id', 'N/A')
         status           = detail.get('status', '')
         findings_summary = detail.get('findings', {}).get('summary', '')
+        # 조치 정보 (DevOps Agent가 제안하는 remediation)
+        remediation      = detail.get('findings', {}).get('remediation', '')
+        namespace        = detail.get('metadata', {}).get('namespace', 'poc')
+        deployment       = detail.get('metadata', {}).get('deployment_name', '')
 
         if detail_type == 'Investigation Completed':
-            text = (
-                f":white_check_mark: *DevOps Agent 조사 완료*\n"
-                f">*Investigation ID:* `{investigation_id}`\n"
-                f">*Status:* {status}\n"
-                f">*Summary:* {findings_summary}"
-            )
-        elif detail_type == 'Investigation Failed':
-            text = (
-                f":x: *DevOps Agent 조사 실패*\n"
-                f">*Investigation ID:* `{investigation_id}`\n"
-                f">상세: {json.dumps(detail, ensure_ascii=False)[:400]}"
-            )
-        else:
-            text = f":bell: *DevOps Agent 이벤트:* {detail_type}\n>{json.dumps(detail, ensure_ascii=False)[:400]}"
+            # Block Kit: 텍스트 + 승인 버튼
+            action_value = json.dumps({
+                "investigation_id": investigation_id,
+                "namespace": namespace,
+                "deployment": deployment,
+                "channel": SLACK_CHANNEL,
+            })
+            blocks = [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": (
+                            f":white_check_mark: *DevOps Agent 조사 완료*\n"
+                            f">*Investigation ID:* `{investigation_id}`\n"
+                            f">*Status:* {status}\n"
+                            f">*Summary:* {findings_summary}"
+                            + (f"\n>*Remediation:* {remediation}" if remediation else "")
+                        )
+                    }
+                },
+            ]
+            # deployment 정보가 있을 때만 승인 버튼 추가
+            if deployment:
+                blocks.append({
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {"type": "plain_text", "text": f"✅ rollout undo ({deployment})"},
+                            "style": "primary",
+                            "action_id": "approve_rollback",
+                            "value": action_value,
+                            "confirm": {
+                                "title": {"type": "plain_text", "text": "롤백 실행 확인"},
+                                "text": {"type": "mrkdwn", "text": f"`kubectl rollout undo deployment/{deployment} -n {namespace}` 를 실행합니다."},
+                                "confirm": {"type": "plain_text", "text": "실행"},
+                                "deny": {"type": "plain_text", "text": "취소"},
+                            }
+                        },
+                        {
+                            "type": "button",
+                            "text": {"type": "plain_text", "text": "❌ 무시"},
+                            "action_id": "dismiss_action",
+                            "value": investigation_id,
+                        }
+                    ]
+                })
+            payload = {"channel": SLACK_CHANNEL, "blocks": blocks, "text": f"DevOps Agent 조사 완료: {investigation_id}"}
 
-        result = post_to_slack(token, SLACK_CHANNEL, text)
-        logger.info("Slack post result: %s", result)
+        elif detail_type == 'Investigation Failed':
+            payload = {
+                "channel": SLACK_CHANNEL,
+                "text": (
+                    f":x: *DevOps Agent 조사 실패*\n"
+                    f">*Investigation ID:* `{investigation_id}`\n"
+                    f">상세: {json.dumps(detail, ensure_ascii=False)[:400]}"
+                )
+            }
+        else:
+            payload = {
+                "channel": SLACK_CHANNEL,
+                "text": f":bell: *DevOps Agent 이벤트:* {detail_type}\n>{json.dumps(detail, ensure_ascii=False)[:400]}"
+            }
+
+        result = post_to_slack(token, payload)
+        logger.info("Slack post result ts=%s", result.get('ts'))
 
     return {"statusCode": 200}
 PYTHON
@@ -197,13 +249,13 @@ PYTHON
   }
 }
 
-resource "aws_lambda_function" "h5_bridge" {
-  function_name    = "${var.project}-h5-bridge"
+resource "aws_lambda_function" "h5_notifier" {
+  function_name    = "${var.project}-h5-bridge"  # 기존 이름 유지 (SNS subscription 변경 불필요)
   role             = aws_iam_role.h5_lambda.arn
   handler          = "index.lambda_handler"
   runtime          = "python3.12"
-  filename         = data.archive_file.h5_lambda.output_path
-  source_code_hash = data.archive_file.h5_lambda.output_base64sha256
+  filename         = data.archive_file.h5_notifier.output_path
+  source_code_hash = data.archive_file.h5_notifier.output_base64sha256
   timeout          = 30
 
   environment {
@@ -215,23 +267,22 @@ resource "aws_lambda_function" "h5_bridge" {
   }
 }
 
-# SNS → Lambda 트리거
+# SNS → notifier Lambda 트리거
 resource "aws_sns_topic_subscription" "h5_lambda" {
   topic_arn = aws_sns_topic.h5_bridge.arn
   protocol  = "lambda"
-  endpoint  = aws_lambda_function.h5_bridge.arn
+  endpoint  = aws_lambda_function.h5_notifier.arn
 }
 
 resource "aws_lambda_permission" "sns_invoke" {
   statement_id  = "AllowSNSInvoke"
   action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.h5_bridge.function_name
+  function_name = aws_lambda_function.h5_notifier.function_name
   principal     = "sns.amazonaws.com"
   source_arn    = aws_sns_topic.h5_bridge.arn
 }
 
 # ── 도쿄 EventBridge 규칙 ─────────────────────────────────────────────────────
-# 도쿄 리전에 규칙을 만들어야 하므로 별도 provider alias 사용
 resource "aws_cloudwatch_event_rule" "investigation_completed" {
   provider    = aws.tokyo
   name        = "${var.project}-investigation-completed"

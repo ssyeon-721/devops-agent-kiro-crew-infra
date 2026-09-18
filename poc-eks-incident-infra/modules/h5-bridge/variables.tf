@@ -23,3 +23,9 @@ variable "slack_channel_id" {
   description = "DevOps Agent 조사 결과를 수신할 Slack 채널 ID"
   type        = string
 }
+
+variable "crew_operator_role_arn" {
+  description = "rollout undo 실행용 kirocrew-triage-operator 역할 ARN (Phase 5-3 Crew 스킬용)"
+  type        = string
+  default     = ""
+}

@@ -112,8 +112,9 @@ module "h5_bridge" {
     aws.tokyo = aws.tokyo
   }
 
-  project          = var.project
-  agent_space_id   = var.agent_space_id
-  crew_instance_id = var.crew_instance_id
-  slack_channel_id = var.slack_channel_id
+  project                = var.project
+  agent_space_id         = var.agent_space_id
+  crew_instance_id       = var.crew_instance_id
+  slack_channel_id       = var.slack_channel_id
+  crew_operator_role_arn = module.crew_host.operator_role_arn
 }

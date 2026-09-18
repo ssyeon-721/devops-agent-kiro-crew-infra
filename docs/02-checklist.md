@@ -396,9 +396,22 @@
 
 ### 5-3. Tier 2 승인 플로우 구현
 
-- [ ] Slack Block Kit 승인 버튼 구현
-- [ ] 승인 후 `kirocrew-triage-operator` AssumeRole (세션 15분)
-- [ ] `rollout undo` 실행 → 결과 Slack 회신
+> **설계 변경 (2026-09-18)**: Slack Block Kit 버튼 방식 → Crew 스킬 방식으로 전환
+> 이유: Slack이 Socket Mode로 설정돼 있어 Interactivity Request URL 사용 불가.
+> Socket Mode를 끄고 Lambda Function URL을 쓰는 대신, Crew가 이미 Socket으로
+> Slack에 연결돼 있으므로 Crew에게 직접 "rollback" 요청 → Crew 스킬이 처리하는
+> 방식이 구조적으로 더 자연스럽고 추가 인프라가 없음. (h5-approver Lambda / Function URL 제거)
+
+- [x] ~~Slack Block Kit 승인 버튼~~ → Crew 스킬 방식으로 대체
+  - `skills/eks-rollback.md` 작성 (SKILL.md 형식, triggers: rollback/롤백/rollout undo)
+  - Crew EC2 `~/.kiro/crew/skills/eks-rollback/SKILL.md`로 배포
+- [x] 승인 후 `kirocrew-triage-operator` AssumeRole — operator 역할 kubeconfig 검증 완료
+  - `aws eks update-kubeconfig --role-arn .../kirocrew-triage-operator --alias crew-operator`
+  - operator 역할은 `poc` 네임스페이스 한정 Edit — nodes 등 클러스터 레벨은 Forbidden(설계대로)
+- [x] `rollout undo` 실행 → **직접 실행 검증 완료** (2026-09-18)
+  - `kubectl --context crew-operator rollout undo deployment/web-poc -n poc` → `rolled back`
+  - `rollout status` → `successfully rolled out` (2/2 replicas)
+- [ ] Crew에게 Slack/DM "rollback" 요청 → 스킬 자동 실행 왕복 검증 (다음)
 - [ ] 시나리오 1, 2로 왕복 검증
 
 ### 5-4. 포스트모템 초안 생성
