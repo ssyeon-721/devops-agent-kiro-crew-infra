@@ -2,9 +2,9 @@
 
 - 문서 버전: v2.1
 - 작성일: 2026-09-13
-- 최종 업데이트: 2026-09-15
+- 최종 업데이트: 2026-09-18
 - 성격: 기술 검증 (운영 개선 프로젝트 아님)
-- 상태: Phase 5 진행 중 (H1·H2 실증 완료, H3 부분 진행, H5 구축 중)
+- 상태: Phase 5 진행 중 (H1·H2 실증 완료, H3 부분 진행, H5 **연결·조치 전체 흐름 실증 완료**)
 
 ---
 
@@ -74,7 +74,7 @@ CloudWatch 알람 → SNS → Lambda → Crew 직접 트리아지
 | H2 | 수집된 컨텍스트는 원인 분석에 충분하다 | Phase 2 | ✅ 실증 완료 (아티팩트 완전 수집) |
 | H3 | DevOps Agent는 증상이 같고 원인이 다른 장애를 구분한다 | Phase 3 ★ | 🔄 진행 중 (S1 1회차 정답 확인) |
 | H4 | Runbook 최적화로 적중률을 유의미하게 올릴 수 있다 | Phase 4 | ⬜ 미착수 |
-| H5 | DevOps Agent → Crew 연결이 안정적으로 구성 가능하다 | Phase 5 | 🔄 Crew 구축 중 (EKS 접근 검증 완료) |
+| H5 | DevOps Agent → Crew 연결이 안정적으로 구성 가능하다 | Phase 5 | ✅ 실증 완료 (조사→한국어 요약 게시→승인→롤백 전체 관통) |
 
 **H3가 중심이다.** 여기서 실패하면 아키텍처 전체의 가치가 사라진다.
 
@@ -292,7 +292,7 @@ notes: |
 | 2 | Operator 배포 → 시나리오 1~4 주입 | H1, H2 | ✅ 완료 (감지율 100%, 수집 완전성 100%) |
 | 3 | DevOps Agent 연동 → 시나리오 1~6 주입 | H3 ★ 중단 판정 | 🔄 진행 중 (S1 1회차 정답, 나머지 시나리오 대기) |
 | 4 | Runbook 최적화 → 시나리오 1~6 재주입 | H4 | ⬜ 미착수 |
-| 5 | Kiro Crew 조치 레이어 (Tier 2만) | H5 | 🔄 진행 중 (Crew 설치·EKS 접근 완료, Slack·H5 실측 대기) |
+| 5 | Kiro Crew 조치 레이어 (Tier 2만) | H5 | 🔄 대부분 완료 (Slack 연동·H5 크로스리전·한국어 요약 게시·Tier2 롤백 전체 관통 실증. 시나리오 반복 검증 남음) |
 | 6 | 보조 경로 구성 → 시나리오 7 주입 | | ⬜ 미착수 |
 | 7 | 결과 정리 및 리포트 작성 | | ⬜ 미착수 |
 
@@ -335,7 +335,7 @@ DevOps Agent는 `aws.aidevops` 소스로 default 이벤트 버스에 이벤트�
 ```
 
 > Agent Space 이름은 `poc-eks-incident-agent` (도쿄 `ap-northeast-1`)로 생성됨.
-> 단, `agent_space_id`는 **이름이 아니라 콘솔이 발급하는 고유 ID**이므로, Phase 3에서 콘솔에서 실제 ID를 확인해 `<our-agent-space-id>`를 교체해야 한다.
+> `agent_space_id` 실제 값: `0786d7f0-108f-48a6-8c42-b84c5d93cf3b` (콘솔 발급, tfvars에 반영).
 
 **의의**
 - 원래 A안(Webhook 재발급)의 "조사 완료를 내보내는지 불확실" 문제, B안(Slack 파싱)의 "포맷 변경 취약" 문제를 모두 우회한다.
@@ -349,7 +349,32 @@ DevOps Agent는 `aws.aidevops` 소스로 default 이벤트 버스에 이벤트�
 | B | Crew를 Slack 채널 observe 모드로 붙여 결과 파싱 | 텍스트 파싱이라 포맷 변경에 취약. 폴백 시 원문을 스레드에 올려 사람이 판단 |
 | C | S3 이벤트 알림 폴링 | 조사 결과가 S3에 안 떨어지면 불가 |
 
-D안이 크로스 리전 EventBridge로 실제 동작하는지는 Phase 5에서 실측한다(이벤트 발생 → 규칙 매칭 → Crew 수신까지 왕복). 다만 각 구간이 공식 지원되므로 성공 가능성이 높다.
+**실측 결과 (2026-09-18): D안 실증 완료 — 다만 크로스 리전 구성에 보정 필요했음.**
+
+실제 구현하며 확인한 사항:
+
+1. **크로스 리전은 SNS 직접 타겟 불가 → 이벤트 버스 2단 구성**
+   EventBridge 규칙은 **다른 리전의 SNS를 직접 타겟으로 지원하지 않는다**(MatchedEvents는 잡히나 Invocations=0). 크로스 리전 네이티브 전달은 "다른 리전의 이벤트 버스"로만 가능하므로 아래 2단으로 구성:
+   ```
+   [도쿄] 규칙(aws.aidevops) → [서울] default 이벤트 버스(PutEvents, IAM 역할 경유)
+   [서울] 규칙(aws.aidevops) → SNS → Lambda
+   ```
+
+2. **조사 이벤트에는 요약 본문이 없다 → ListJournalRecords로 별도 조회**
+   `Investigation Completed` 이벤트의 `detail.data`에는 `status`, `priority`, `summary_record_id`만 있고 조사 내용 자체는 없다. 실제 요약은 `aws devops-agent list-journal-records`로 조회해 `recordType=investigation_summary_md` 레코드의 content를 읽어야 한다.
+
+3. **요약·한국어화·게시는 Kiro Crew가 자율 수행 (순수 Crew)**
+   Lambda는 이벤트 파싱 후 Crew에 SSM으로 지시만 하고, Crew가 spawn 서브에이전트로 ① 요약 조회 ② 한국어 4항목 요약 ③ `send_message` 도구로 Slack 채널 게시까지 자율 수행한다. (Bedrock 등 외부 번역 서비스 불필요)
+
+4. **Crew 자율 실행 필수 조건 3가지** (§6.2 C8 참조)
+
+**최종 전체 흐름 (실증 완료):**
+```
+① 장애 → ② Operator 감지·수집(webhook 200) → ③ 도쿄 Agent 조사(Investigation Completed)
+→ ④ [도쿄]EventBridge → [서울]이벤트버스 → 규칙 → SNS → Lambda → Crew spawn
+     → Crew: ListJournalRecords 요약 조회 → 한국어 요약 → send_message로 Slack 게시(조치 제안 포함)
+→ ⑤ 사용자 Slack "web-poc 롤백해줘" → ⑥ Crew eks-rollback 스킬 → rollout undo → 복구
+```
 
 ### 6.2 제약 사항
 
@@ -362,6 +387,7 @@ D안이 크로스 리전 EventBridge로 실제 동작하는지는 Phase 5에서 
 | C5 | Crew Strict 샌드박스가 .aws/.ssh/.kube를 숨김 | Auto 모드 사용. Off 금지 |
 | C6 | Crew에 민감/규제 데이터 입력 금지 경고 | PoC 워크로드에 실데이터 미사용. 고객사 전개 시 마스킹 레이어 필수 |
 | C7 | HMAC Secret 재조회 불가 | 발급 즉시 CSV 다운로드 → Secrets Manager |
+| C8 | Crew spawn 서브에이전트 자율 실행 제약 (Phase 5-2 발견) | ① **메모리**: spawn은 최소 4GB 요구 → Crew EC2를 `t3a.medium`(4GB, 여유 1.5GB뿐)에서 **`t3a.large`(8GB)로 상향**. ② **외부 전송**: `curl`·`aws s3 cp` 등 임의 bash 쓰기는 spawn에서 승인 거부됨(`dangerously_skip_permissions=true`로도 안 뚫림). Crew **내장 `send_message` 도구**(@kirocrew-core)로 채널 게시해야 무승인 통과. ③ **채널 등록**: `slack.tracking_channels`에 대상 채널 미등록 시 send_message가 거부 → config에 등록 필수. (설정: `admission_gate=false`, `dangerously_skip_permissions=true`, `tracking_channels=[{channel_id}]` — 모두 `config.local.json`) |
 
 ### 6.3 리스크
 
@@ -461,7 +487,8 @@ poc-eks-incident-infra/
 | operator_iam | devops-agent-operator-policy, devops-agent-operator-role, 신뢰 정책 |
 | storage | 인시던트 S3 버킷(버전관리·30일 라이프사이클), CloudWatch 로그그룹(14일) |
 | registry | ECR 레포 2개 + 라이프사이클 정책 |
-| crew_host | EC2, 보안그룹(인바운드 0), SSM 접속용 인스턴스 프로파일, kirocrew-triage-reader / kirocrew-triage-operator 역할 |
+| crew_host | EC2(t3a.large), 보안그룹(인바운드 0), SSM 접속용 인스턴스 프로파일, kirocrew-triage-reader / kirocrew-triage-operator 역할. base 역할에 Secrets Manager(kiro-crew/*)·`aidevops:ListJournalRecords` 조회 권한 |
+| h5_bridge | (Phase 5-2) 도쿄 EventBridge 규칙 → 서울 이벤트 버스 → 서울 규칙 → SNS → Lambda(Crew에 요약+게시 SSM 지시). 크로스리전 PutEvents IAM 역할 포함 |
 | alt_path | CloudWatch 알람, SNS 토픽, Lambda 브리지(중복 억제 포함) |
 
 **관리하지 않는다**
