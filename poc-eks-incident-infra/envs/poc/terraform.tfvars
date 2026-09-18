@@ -4,7 +4,8 @@ project            = "poc-eks-incident"
 cluster_version    = "1.34"
 node_desired_size  = 2
 node_instance_type = "t3.large"
-crew_instance_type = "t3a.medium"
+# t3a.large(8GB) — Crew spawn 서브에이전트가 최소 4GB 요구, medium(4GB)로는 부족
+crew_instance_type = "t3a.large"
 
 # AL2023 AMI — apply 전에 최신값으로 교체
 # aws ssm get-parameter \

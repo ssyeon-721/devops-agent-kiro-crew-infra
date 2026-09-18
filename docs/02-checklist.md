@@ -440,8 +440,28 @@
   - boto3 서비스명 `devops-agent`(CLI와 동일), 응답 필드명 `records`(CLI의 journalRecords와 다름)
   - Lambda IAM에 `aidevops:ListJournalRecords` + Slack 토큰 조회 권한 추가
 - [x] Slack에 조사 요약 + 롤백 안내 게시 확인 (방식 B: Lambda가 요약 전달, Crew가 조치)
-- [ ] ⏭ 조사 요약 **한국어 정리**는 후속 (갈래1: Lambda+Bedrock / 갈래2: Crew 요약 — 미결정)
-- [ ] ⏭ 영어 원문 잘림(2500자 제한) 개선도 한국어 요약 시 함께 해결 예정
+- [x] **조사 요약 한국어화 — Crew send_message 방식으로 완성** (2026-09-18)
+  - 최종 채택: **Crew가 요약 + 한국어화 + Slack 게시까지 자율 수행** (Bedrock 불필요)
+  - Lambda는 이벤트 파싱 후 Crew에 SSM으로 지시만 → Crew가 spawn으로 자율 처리
+  - 영어 원문 잘림도 Crew가 700자 이내 압축 요약으로 해결
+  - **여기까지 오며 확정한 Crew 자동화 핵심 3가지 (재구축 시 필수)**:
+    1. **spawn 메모리**: 서브에이전트는 최소 4GB 요구 → Crew EC2를 `t3a.large`(8GB)로 상향
+       (t3a.medium 4GB는 `spawn refused: only 1.5GB available`)
+    2. **외부 전송은 `send_message` 도구로**: `curl`/`aws s3 cp` 등 임의 bash 쓰기는
+       spawn에서 계속 승인 거부됨(dangerously_skip_permissions=true로도 안 뚫림).
+       Crew 내장 `send_message`(@kirocrew-core, allowedTools에 이미 포함)는 승인 없이 채널 게시 가능
+    3. **`slack.tracking_channels`에 대상 채널 등록 필수**: 미등록 시 send_message가
+       "not in tracked channels"로 거부. `config set --local slack.tracking_channels '[{"channel_id":"C0C1EDPAEMR"}]'`
+  - 참고 설정(config.local.json): `agent.admission_gate=false`, `agent.dangerously_skip_permissions=true`
+  - Bedrock 접근법은 검증만 하고 롤백함 (번역 전용으로 별도 서비스 끌어들이는 게 과함)
+
+**H5 최종 전체 흐름 (완성)**
+```
+① 장애 → ② Operator 감지·수집(webhook 200) → ③ 도쿄 Agent 조사(Investigation Completed)
+→ ④ EventBridge(도쿄→서울 버스) → SNS → Lambda → Crew spawn
+   → Crew가 ListJournalRecords로 요약 조회 → 한국어 4항목 요약 → send_message로 Slack 게시
+→ ⑤ 사용자 Slack "web-poc 롤백해줘" → ⑥ Crew eks-rollback 스킬 → rollout undo → 복구
+```
 
 ### 5-4. 포스트모템 초안 생성
 

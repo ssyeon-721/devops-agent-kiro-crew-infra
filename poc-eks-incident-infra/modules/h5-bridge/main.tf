@@ -83,20 +83,17 @@ resource "aws_iam_role_policy" "h5_lambda_permissions" {
     Version = "2012-10-17"
     Statement = [
       {
-        # 조사 요약 저널 레코드 조회 (도쿄 aidevops)
-        Sid    = "DevOpsAgentJournalRead"
+        # Crew에게 "조사요약 조회+한국어 요약+send_message 채널 게시"를 SSM으로 지시
+        Sid    = "SSMSendToCrewEC2"
         Effect = "Allow"
         Action = [
-          "aidevops:ListJournalRecords",
+          "ssm:SendCommand",
+          "ssm:GetCommandInvocation",
         ]
-        Resource = "*"
-      },
-      {
-        # Slack Bot Token 조회
-        Sid    = "SlackTokenRead"
-        Effect = "Allow"
-        Action = "secretsmanager:GetSecretValue"
-        Resource = "arn:aws:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:kiro-crew/*"
+        Resource = [
+          "arn:aws:ec2:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:instance/${var.crew_instance_id}",
+          "arn:aws:ssm:${data.aws_region.current.name}::document/AWS-RunShellScript",
+        ]
       }
     ]
   })
@@ -113,77 +110,36 @@ import json
 import boto3
 import os
 import logging
-import urllib.request
+import base64
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-REGION        = os.environ['AWS_REGION_NAME']
-AGENT_REGION  = os.environ['AGENT_REGION']   # 도쿄
-SLACK_SECRET  = os.environ['SLACK_SECRET_ID']
-SLACK_CHANNEL = os.environ['SLACK_CHANNEL_ID']
+REGION           = os.environ['AWS_REGION_NAME']
+AGENT_REGION     = os.environ['AGENT_REGION']       # 도쿄
+CREW_INSTANCE_ID = os.environ['CREW_INSTANCE_ID']
+SLACK_CHANNEL    = os.environ['SLACK_CHANNEL_ID']
 
-aidevops = boto3.client('devops-agent', region_name=AGENT_REGION)
+ssm = boto3.client('ssm', region_name=REGION)
 
-def get_bot_token():
-    client = boto3.client('secretsmanager', region_name=REGION)
-    resp = client.get_secret_value(SecretId=SLACK_SECRET)
-    return json.loads(resp['SecretString'])['SLACK_BOT_TOKEN']
-
-def fetch_summary(agent_space_id, execution_id):
-    """ListJournalRecords로 investigation_summary_md content 조회"""
-    try:
-        resp = aidevops.list_journal_records(
-            agentSpaceId=agent_space_id,
-            executionId=execution_id,
-        )
-    except Exception as e:
-        logger.error("list_journal_records EXCEPTION: %s", e)
-        return None
-    records = resp.get('records', resp.get('journalRecords', []))
-    logger.info("records count=%d, resp keys=%s", len(records), list(resp.keys()))
-    for rec in records:
-        # boto3 필드명이 recordType 또는 record_type일 수 있어 둘 다 확인
-        rtype = rec.get('recordType') or rec.get('record_type', '')
-        if rtype == 'investigation_summary_md':
-            return rec.get('content', '')
-    return None
-
-def parse_summary(md):
-    """investigation_summary_md에서 핵심 필드 추출 (Symptoms/Findings/Root Cause)"""
-    if not md:
-        return {}
-    out = {}
-    # 간단한 마크다운 헤더 기반 추출
-    lines = md.split('\n')
-    section = None
-    buf = {}
-    for ln in lines:
-        s = ln.strip()
-        if s.startswith('### Cause:') or s.startswith('### Root Cause:'):
-            key = 'root_cause' if 'Root Cause' in s else 'cause'
-            buf.setdefault(key, s.split(':', 1)[1].strip())
-        elif s.startswith('### ') and 'stuck' in s.lower() or s.startswith('### web') :
-            buf.setdefault('symptom', s.lstrip('# ').strip())
-    return buf
-
-def post_to_slack(token, text):
-    payload = json.dumps({"channel": SLACK_CHANNEL, "text": text, "unfurl_links": False}).encode('utf-8')
-    req = urllib.request.Request(
-        'https://slack.com/api/chat.postMessage',
-        data=payload,
-        headers={'Content-Type': 'application/json; charset=utf-8', 'Authorization': f'Bearer {token}'},
-        method='POST',
+def instruct_crew(prompt):
+    """Crew에게 SSM으로 spawn 지시. Crew가 요약+send_message 채널 게시를 자율 수행."""
+    b64 = base64.b64encode(prompt.encode('utf-8')).decode('ascii')
+    cmd = (
+        f"echo {b64} | base64 -d > /tmp/h5_prompt.txt && "
+        f"chown kirocrew:kirocrew /tmp/h5_prompt.txt && "
+        f"sudo -u kirocrew -H bash -l -c 'kirocrew spawn run --async \"$(cat /tmp/h5_prompt.txt)\"'"
     )
-    with urllib.request.urlopen(req, timeout=10) as resp:
-        body = json.loads(resp.read())
-    if not body.get('ok'):
-        raise RuntimeError(f"Slack API error: {body.get('error')}")
-    return body
+    resp = ssm.send_command(
+        InstanceIds=[CREW_INSTANCE_ID],
+        DocumentName='AWS-RunShellScript',
+        Parameters={'commands': [cmd]},
+        Comment='H5 investigation summary via Crew send_message',
+    )
+    return resp['Command']['CommandId']
 
 def lambda_handler(event, context):
     logger.info("Received event: %s", json.dumps(event))
-    token = get_bot_token()
 
     for record in event.get('Records', []):
         try:
@@ -204,35 +160,29 @@ def lambda_handler(event, context):
         priority       = data.get('priority', '')
 
         if detail_type == 'Investigation Completed':
-            summary_md = fetch_summary(agent_space_id, execution_id)
-            if summary_md:
-                # 요약 마크다운을 그대로 싣되 Slack 길이 제한 고려(3000자)
-                body = summary_md.strip()
-                if len(body) > 2500:
-                    body = body[:2500] + "\n... (요약 일부 생략)"
-                text = (
-                    f":white_check_mark: *DevOps Agent 조사 완료* (priority: {priority})\n"
-                    f"```{body}```\n"
-                    f":point_right: 조치가 필요하면 봇에게 멘션으로 "
-                    f"`@kiro-crew-bot web-poc 롤백해줘` 라고 요청하세요. "
-                    f"승인 즉시 Crew가 `rollout undo`를 실행합니다."
-                )
-            else:
-                text = (
-                    f":white_check_mark: *DevOps Agent 조사 완료* (priority: {priority})\n"
-                    f">조사 요약을 가져오지 못했습니다. task_id=`{task_id}`, execution_id=`{execution_id}`\n"
-                    f">도쿄 콘솔에서 직접 확인하세요."
-                )
-            post_to_slack(token, text)
-            logger.info("Posted summary to Slack for exec=%s", execution_id)
+            prompt = (
+                f"DevOps Agent 조사가 완료됐어(priority={priority}). 다음을 순서대로 해줘. "
+                f"1) 조사 요약 조회: aws devops-agent list-journal-records --region {AGENT_REGION} "
+                f"--agent-space-id {agent_space_id} --execution-id {execution_id} 를 실행하고, "
+                f"결과 JSON에서 recordType이 'investigation_summary_md'인 레코드의 content가 핵심 요약이야. "
+                f"2) 그 내용을 한국어로 '증상/원인/근본원인/권고' 4개 항목으로 각 1~2문장씩 자연스럽게 요약해. "
+                f"각 항목은 마크다운 볼드(*증상* 등)로 표시하고 전체 700자 이내로 압축해. "
+                f"3) 요약 맨 끝에 '롤백이 필요하면 @kiro-crew-bot 에게 web-poc 롤백해줘 라고 요청하세요.'를 덧붙여. "
+                f"4) 완성한 한국어 요약을 send_message 도구로 Slack 채널 {SLACK_CHANNEL}에 게시해. "
+                f"(curl이나 aws cli 말고 반드시 send_message 도구를 사용)"
+            )
+            cmd_id = instruct_crew(prompt)
+            logger.info("Crew instructed(summary+send) cmd=%s exec=%s", cmd_id, execution_id)
 
         elif detail_type == 'Investigation Failed':
-            text = (
-                f":x: *DevOps Agent 조사 실패* (status: {status})\n"
-                f">task_id=`{task_id}` — 수동 확인이 필요합니다."
+            prompt = (
+                f"DevOps Agent 조사가 실패했어(status={status}, task_id={task_id}). "
+                f"send_message 도구로 Slack 채널 {SLACK_CHANNEL}에 "
+                f"'⚠️ DevOps Agent 조사 실패 - 수동 확인 필요 (task {task_id})'를 한국어로 게시해. "
+                f"(반드시 send_message 도구 사용)"
             )
-            post_to_slack(token, text)
-            logger.info("Posted failure to Slack task=%s", task_id)
+            cmd_id = instruct_crew(prompt)
+            logger.info("Crew instructed(failure+send) cmd=%s", cmd_id)
         else:
             logger.info("Ignoring detail-type: %s", detail_type)
 
@@ -255,7 +205,7 @@ resource "aws_lambda_function" "h5_notifier" {
     variables = {
       AWS_REGION_NAME  = data.aws_region.current.name
       AGENT_REGION     = "ap-northeast-1"
-      SLACK_SECRET_ID  = var.slack_secret_id
+      CREW_INSTANCE_ID = var.crew_instance_id
       SLACK_CHANNEL_ID = var.slack_channel_id
     }
   }

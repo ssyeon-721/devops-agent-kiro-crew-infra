@@ -44,7 +44,8 @@ variable "log_retention_days" {
 
 # Crew EC2
 variable "crew_instance_type" {
-  default = "t3a.medium"
+  # t3a.large(8GB) — Crew spawn 서브에이전트 최소 4GB 요구로 medium(4GB) 부족
+  default = "t3a.large"
 }
 
 variable "crew_ami_id" {
