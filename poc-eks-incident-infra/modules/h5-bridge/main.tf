@@ -31,7 +31,7 @@ resource "aws_sns_topic" "h5_bridge" {
   name = "${var.project}-h5-bridge"
 }
 
-# EventBridge(도쿄)가 서울 SNS에 Publish할 수 있도록 리소스 정책 추가
+# EventBridge(서울 규칙)가 서울 SNS에 Publish할 수 있도록 리소스 정책 추가
 resource "aws_sns_topic_policy" "h5_bridge" {
   arn = aws_sns_topic.h5_bridge.arn
 
@@ -39,7 +39,7 @@ resource "aws_sns_topic_policy" "h5_bridge" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "AllowEventBridgeCrossRegion"
+        Sid    = "AllowEventBridgePublish"
         Effect = "Allow"
         Principal = {
           Service = "events.amazonaws.com"
@@ -48,7 +48,7 @@ resource "aws_sns_topic_policy" "h5_bridge" {
         Resource = aws_sns_topic.h5_bridge.arn
         Condition = {
           ArnLike = {
-            "aws:SourceArn" = "arn:aws:events:ap-northeast-1:${data.aws_caller_identity.current.account_id}:rule/*"
+            "aws:SourceArn" = "arn:aws:events:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:rule/*"
           }
         }
       }
@@ -282,14 +282,27 @@ resource "aws_lambda_permission" "sns_invoke" {
   source_arn    = aws_sns_topic.h5_bridge.arn
 }
 
-# ── 도쿄 EventBridge 규칙 ─────────────────────────────────────────────────────
-resource "aws_cloudwatch_event_rule" "investigation_completed" {
+# ── 크로스 리전 EventBridge (도쿄 → 서울) ────────────────────────────────────
+# EventBridge는 다른 리전의 SNS를 직접 타겟으로 지원하지 않는다.
+# 크로스 리전은 "다른 리전의 이벤트 버스"로만 네이티브 전달 가능하므로,
+# 도쿄 규칙 → 서울 default 버스 → 서울 규칙 → SNS 2단 구성으로 처리한다.
+#
+#   [도쿄] rule(aws.aidevops) → [서울] default event bus
+#   [서울] rule(aws.aidevops) → SNS 토픽
+
+# 서울 default 이벤트 버스 ARN
+data "aws_cloudwatch_event_bus" "seoul_default" {
+  name = "default"
+}
+
+# ── [도쿄] 규칙: aws.aidevops 이벤트를 서울 이벤트 버스로 전달 ───────────────
+resource "aws_cloudwatch_event_rule" "tokyo_forward" {
   provider    = aws.tokyo
-  name        = "${var.project}-investigation-completed"
-  description = "DevOps Agent 조사 완료/실패 이벤트를 서울 Crew로 전달"
+  name        = "${var.project}-investigation-forward"
+  description = "DevOps Agent 조사 이벤트를 서울 이벤트 버스로 크로스 리전 전달"
 
   event_pattern = jsonencode({
-    source      = ["aws.aidevops"]
+    source        = ["aws.aidevops"]
     "detail-type" = ["Investigation Completed", "Investigation Failed"]
     detail = {
       metadata = {
@@ -299,9 +312,60 @@ resource "aws_cloudwatch_event_rule" "investigation_completed" {
   })
 }
 
-resource "aws_cloudwatch_event_target" "to_seoul_sns" {
+# 크로스 리전 전달에는 EventBridge가 대상 버스에 PutEvents 할 IAM 역할이 필요
+resource "aws_iam_role" "eventbridge_crossregion" {
+  name = "${var.project}-eventbridge-crossregion"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "events.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "eventbridge_crossregion" {
+  name = "put-events-seoul"
+  role = aws_iam_role.eventbridge_crossregion.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = "events:PutEvents"
+      Resource = data.aws_cloudwatch_event_bus.seoul_default.arn
+    }]
+  })
+}
+
+resource "aws_cloudwatch_event_target" "tokyo_to_seoul_bus" {
   provider  = aws.tokyo
-  rule      = aws_cloudwatch_event_rule.investigation_completed.name
-  target_id = "ToSeoulSNS"
+  rule      = aws_cloudwatch_event_rule.tokyo_forward.name
+  target_id = "ToSeoulBus"
+  arn       = data.aws_cloudwatch_event_bus.seoul_default.arn
+  role_arn  = aws_iam_role.eventbridge_crossregion.arn
+}
+
+# ── [서울] 규칙: 전달받은 aws.aidevops 이벤트를 SNS로 라우팅 ──────────────────
+resource "aws_cloudwatch_event_rule" "seoul_to_sns" {
+  name        = "${var.project}-investigation-completed"
+  description = "서울로 전달된 DevOps Agent 조사 이벤트를 SNS로 라우팅"
+
+  event_pattern = jsonencode({
+    source        = ["aws.aidevops"]
+    "detail-type" = ["Investigation Completed", "Investigation Failed"]
+    detail = {
+      metadata = {
+        agent_space_id = [var.agent_space_id]
+      }
+    }
+  })
+}
+
+resource "aws_cloudwatch_event_target" "seoul_sns" {
+  rule      = aws_cloudwatch_event_rule.seoul_to_sns.name
+  target_id = "ToSNS"
   arn       = aws_sns_topic.h5_bridge.arn
 }

@@ -8,7 +8,12 @@ output "notifier_function_name" {
   value       = aws_lambda_function.h5_notifier.function_name
 }
 
-output "eventbridge_rule_name" {
-  description = "도쿄 EventBridge 규칙 이름"
-  value       = aws_cloudwatch_event_rule.investigation_completed.name
+output "eventbridge_tokyo_rule_name" {
+  description = "도쿄 EventBridge 전달 규칙 이름"
+  value       = aws_cloudwatch_event_rule.tokyo_forward.name
+}
+
+output "eventbridge_seoul_rule_name" {
+  description = "서울 EventBridge SNS 라우팅 규칙 이름"
+  value       = aws_cloudwatch_event_rule.seoul_to_sns.name
 }
